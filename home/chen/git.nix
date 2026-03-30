@@ -1,0 +1,69 @@
+{ config, pkgs, ... }:
+
+{
+  programs.git = {
+    enable = true;
+
+    userName = "Jiali Chen";
+    userEmail = "chenjiali@radxa.com";
+
+    signing = {
+      key = "75B292EBF683FF87";
+      signByDefault = true;
+    };
+
+    lfs.enable = true;
+
+    extraConfig = {
+      core.editor = "code --wait";
+
+      pull.rebase = true;
+
+      rebase.autoStash = true;
+
+      commit = {
+        signoff = true;
+        template = "${config.home.homeDirectory}/.gitmessage.txt";
+      };
+
+      format.signoff = true;
+
+      http.postBuffer = 2048576000;
+
+      color.ui = "auto";
+
+      credential = {
+        "https://github.com" = {
+          helper = [
+            ""
+            "!/usr/bin/env gh auth git-credential"
+          ];
+        };
+        "https://gist.github.com" = {
+          helper = [
+            ""
+            "!/usr/bin/env gh auth git-credential"
+          ];
+        };
+      };
+
+      alias.commits = "commit -s";
+
+      trailer.changeid.key = "Change-Id";
+
+      submodule.fetchJobs = 24;
+
+      filter.lfs = {
+        clean = "git-lfs clean -- %f";
+        smudge = "git-lfs smudge -- %f";
+        process = "git-lfs filter-process";
+        required = true;
+      };
+
+      safe.directory = [
+        "/mnt"
+        "/run/media/chen/rootfs/home"
+      ];
+    };
+  };
+}
