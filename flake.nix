@@ -105,10 +105,11 @@
             boot.plymouth.enable = lib.mkForce false;
             boot.initrd.availableKernelModules = lib.mkForce [
               "xhci_pci" "ahci" "usb_storage" "usbhid" "sd_mod"
-              "ehci_pci" "uas"
+              "ehci_pci" "uas" "ext4"
             ];
             boot.kernelModules = lib.mkForce [ ];
             boot.extraModulePackages = lib.mkForce [ ];
+            boot.kernelParams = lib.mkForce [ "rootwait" "rootdelay=5" ];
 
             # 禁用 NVIDIA（测试不需要）
             services.xserver.videoDrivers = lib.mkForce [ "modesetting" ];
@@ -122,9 +123,9 @@
             services.nfs.server.enable = lib.mkForce false;
             virtualisation.waydroid.enable = lib.mkForce false;
 
-            # 测试密码
-            users.users.chen.initialPassword = "test";
-            users.users.root.initialPassword = "test";
+            # 测试密码（明文: test）
+            users.users.chen.initialHashedPassword = "$6$AFcKuacmZVUqsasx$wyTUch56N7coEOq6hzj8cedQjVMf44ZkJmCzCg021cbmwNaEfcHIDA3rhMdRb9USD1XyYKEwIR2wfE.Y6Bfsy0";
+            users.users.root.initialHashedPassword = "$6$AFcKuacmZVUqsasx$wyTUch56N7coEOq6hzj8cedQjVMf44ZkJmCzCg021cbmwNaEfcHIDA3rhMdRb9USD1XyYKEwIR2wfE.Y6Bfsy0";
 
             # 不需要微码和固件
             hardware.cpu.intel.updateMicrocode = lib.mkForce false;
