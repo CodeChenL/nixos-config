@@ -53,6 +53,7 @@
       auto-optimise-store = true;
       trusted-users = [ "root" "chen" ];
       substituters = [
+        "https://mirrors.ustc.edu.cn/nix-channels/store"
         "https://cache.nixos.org"
         "https://nix-community.cachix.org"
       ];

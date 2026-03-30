@@ -26,9 +26,10 @@
 
     # ── 游戏 ──────────────────────────────────────────────────
     # Steam 在系统级配置 (programs.steam)
+    # proton-ge-bin 通过 Steam 的 Proton 管理或 ProtonUp-Qt 安装
     moonlight-qt
     mangohud
-    proton-ge-bin
+    protonup-qt
     wine
     winetricks
     dxvk

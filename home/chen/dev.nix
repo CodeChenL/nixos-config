@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   home.packages = with pkgs; [
@@ -22,7 +22,7 @@
     # ── C/C++ ───────────────────────────────────────────────────
     gcc
     gdb
-    clang
+    clang-tools  # clangd, clang-format 等，不与 gcc 冲突
 
     # ── Python ──────────────────────────────────────────────────
     (python3.withPackages (ps: with ps; [
@@ -56,9 +56,10 @@
     # 使用 `rustup` 管理 Rust 工具链
     rustup
 
-    # ── 交叉编译工具链 ────────────────────────────────────────────
-    pkgsCross.aarch64-multiplatform.buildPackages.gcc
-    gcc-arm-embedded           # arm-none-eabi-gcc
+    # ── 交叉编译工具链 ──────────────────────────────────────────
+    # 全局安装会与系统 gcc/gdb 的 man/info 冲突
+    # 按需使用: nix shell nixpkgs#pkgsCross.aarch64-multiplatform.buildPackages.gcc
+    #          nix shell nixpkgs#gcc-arm-embedded
 
     # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
     dtc                        # 设备树编译器
