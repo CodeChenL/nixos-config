@@ -1,3 +1,4 @@
 # Sensitive data — do not push to public repos
 nm-backup/
+secrets/
 result
