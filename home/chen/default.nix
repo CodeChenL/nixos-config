@@ -4,6 +4,7 @@
   imports = [
     ./shell.nix
     ./git.nix
+    ./ssh.nix
     ./packages.nix
     ./dev.nix
   ];

@@ -66,6 +66,8 @@
       safe.directory = [
         "/mnt"
         "/run/media/chen/rootfs/home"
+        "/home/chen/Documents/GitHub/build"
+        "/run/media/chen/edad4323-81aa-4673-8abd-d5ccf39a3ef0"
       ];
     };
   };
