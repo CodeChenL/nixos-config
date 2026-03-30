@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 
 {
-  # ── Bootloader (GRUB EFI) ───────────────────────────────────────
+  # ── 引导加载器 (GRUB EFI) ───────────────────────────────────────
   boot.loader = {
     efi.canTouchEfiVariables = true;
     efi.efiSysMountPoint = "/boot";
@@ -25,7 +25,7 @@
     timeout = 1;
   };
 
-  # ── Kernel ──────────────────────────────────────────────────────
+  # ── 内核 ───────────────────────────────────────────────────────
   boot.kernelPackages = pkgs.linuxPackages_zen;
 
   boot.kernelParams = [
@@ -42,16 +42,16 @@
     "ibt=off"
   ];
 
-  # ── Initrd ──────────────────────────────────────────────────────
+  # ── 初始化内存盘 ───────────────────────────────────────────────────
   boot.initrd.systemd.enable = true;
 
-  # ── Plymouth ────────────────────────────────────────────────────
+  # ── 开机动画 ─────────────────────────────────────────────────────
   boot.plymouth = {
     enable = true;
     theme = "spinner";
   };
 
-  # ── Additional kernel modules ───────────────────────────────────
+  # ── 额外内核模块配置 ─────────────────────────────────────────────
   boot.extraModprobeConfig = ''
     options cfg80211 ieee80211_regdom=CN
   '';

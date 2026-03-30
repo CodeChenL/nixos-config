@@ -12,15 +12,15 @@
   home.homeDirectory = "/home/chen";
   home.stateVersion = "24.11";
 
-  # Let Home Manager manage itself
+  # 让 Home Manager 管理自身
   programs.home-manager.enable = true;
 
-  # ── Environment variables ───────────────────────────────────────
+  # ── 环境变量 ────────────────────────────────────────────────────
   home.sessionVariables = {
     EDITOR = "vim";
     LANGUAGE = "en_US";
   };
 
-  # ── XDG directories ────────────────────────────────────────────
+  # ── XDG 目录 ─────────────────────────────────────────────────────
   xdg.enable = true;
 }

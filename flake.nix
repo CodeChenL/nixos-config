@@ -1,5 +1,5 @@
 {
-  description = "ChenArchLinux NixOS Configuration";
+  description = "ChenArchLinux NixOS 配置";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,6 +38,9 @@
 
           {
             nixpkgs.config.allowUnfree = true;
+            nixpkgs.config.permittedInsecurePackages = [
+              "ventoy-1.1.10"
+            ];
             nixpkgs.overlays = [ (import ./overlays) ];
           }
         ];

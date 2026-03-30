@@ -1,54 +1,52 @@
 { config, pkgs, ... }:
 
 {
-  # ── Time & NTP ──────────────────────────────────────────────────
+  # ── 时区与 NTP ──────────────────────────────────────────────────
   time.timeZone = "Asia/Shanghai";
   services.timesyncd.enable = true;
 
-  # ── Sensors ─────────────────────────────────────────────────────
+  # ── 传感器 ──────────────────────────────────────────────────────
   hardware.sensor.iio.enable = true;
 
-  # ── lm_sensors ──────────────────────────────────────────────────
-  environment.systemPackages = [ pkgs.lm_sensors ];
+  # ── 硬件温度监控 ─────────────────────────────────────────────────
+  environment.systemPackages = with pkgs; [
+    lm_sensors
+    solaar
+  ];
 
-  # ── Printing (CUPS) ─────────────────────────────────────────────
+  # ── 打印 (CUPS) ─────────────────────────────────────────────────
   services.printing = {
     enable = true;
     drivers = [ pkgs.cups-filters ];
   };
 
-  # ── Power management ────────────────────────────────────────────
+  # ── 电源管理 ────────────────────────────────────────────────────
   services.power-profiles-daemon.enable = true;
 
   # ── USB/IP ──────────────────────────────────────────────────────
-  # usbip kernel modules
+  # USB/IP 内核模块
   boot.kernelModules = [ "usbip-host" "vhci-hcd" ];
 
-  # ── Sunrise/Sunshine (remote desktop host) ──────────────────────
-  # Sunshine needs to be configured via its web UI after install
-  # Package installed in user packages
+  # ── Sunshine（远程桌面主机）─────────────────────────────────────
+  # Sunshine 需要安装后通过其 Web UI 配置
+  # 软件包在用户级包中安装
 
-  # ── Logitech ──────────────────────────────────────────────────
-  environment.systemPackages = [ pkgs.solaar ];
-
-  # ── Flatpak (for Chinese apps fallback) ─────────────────────────
+  # ── Flatpak（国产应用备用）───────────────────────────────────────────
   services.flatpak.enable = true;
 
-  # ── Firmware update ─────────────────────────────────────────────
+  # ── 固件更新 ─────────────────────────────────────────────────────
   services.fwupd.enable = true;
 
-  # ── Udisks (disk management for KDE) ────────────────────────────
+  # ── 磁盘管理（KDE 需要）──────────────────────────────────────────
   services.udisks2.enable = true;
 
   # ── D-Bus ───────────────────────────────────────────────────────
   services.dbus.enable = true;
 
   # ── udev rules ──────────────────────────────────────────────────
-  services.udev.packages = with pkgs; [
-    android-udev-rules
-  ];
+  # android-udev-rules 已被 systemd 内置 uaccess 规则取代，无需额外配置
 
-  # ── Nix settings ────────────────────────────────────────────────
+  # ── Nix 设置 ─────────────────────────────────────────────────────
   nix = {
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
@@ -70,6 +68,6 @@
     };
   };
 
-  # ── System state version ────────────────────────────────────────
+  # ── 系统状态版本 ────────────────────────────────────────────────
   system.stateVersion = "24.11";
 }

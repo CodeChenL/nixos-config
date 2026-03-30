@@ -2,11 +2,11 @@
 
 {
   home.packages = with pkgs; [
-    # ── Editors ─────────────────────────────────────────────────
+    # ── 编辑器 ─────────────────────────────────────────────────
     vscode
     vim
 
-    # ── Build systems ───────────────────────────────────────────
+    # ── 构建系统 ───────────────────────────────────────────────
     cmake
     meson
     gnumake
@@ -52,53 +52,53 @@
     # ── Ruby ────────────────────────────────────────────────────
     ruby
 
-    # ── Rust (via rustup, managed natively) ─────────────────────
-    # Use `rustup` to manage Rust toolchains
+    # ── Rust（通过 rustup 管理）──────────────────────────────
+    # 使用 `rustup` 管理 Rust 工具链
     rustup
 
-    # ── Cross-compilation toolchains ────────────────────────────
+    # ── 交叉编译工具链 ────────────────────────────────────────────
     pkgsCross.aarch64-multiplatform.buildPackages.gcc
     gcc-arm-embedded           # arm-none-eabi-gcc
 
-    # ── Embedded / SoC tools ────────────────────────────────────
-    dtc                        # device tree compiler
+    # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
+    dtc                        # 设备树编译器
     ubootTools                 # mkimage etc.
     android-tools              # adb, fastboot
-    mtd-utils
+    mtdutils
     binwalk
 
-    # ── VCS / CI ────────────────────────────────────────────────
+    # ── 版本控制 / CI ───────────────────────────────────────────
     git
     git-lfs
     github-cli
     lazygit
     pre-commit
-    repo
+    gitRepo
 
-    # ── Container / Dev env ─────────────────────────────────────
+    # ── 容器 / 开发环境 ─────────────────────────────────────────
     devcontainer
 
-    # ── Debug & Tracing ─────────────────────────────────────────
+    # ── 调试与追踪 ───────────────────────────────────────────────
     strace
     busybox
     patchelf
 
-    # ── Shell tools ─────────────────────────────────────────────
+    # ── Shell 工具 ───────────────────────────────────────────────
     shellcheck
     direnv
     nix-direnv
 
-    # ── QEMU (user package for quick use) ───────────────────────
+    # ── QEMU（用户级快速使用）─────────────────────────────────────────
     qemu
 
-    # ── Swig / code gen ─────────────────────────────────────────
+    # ── Swig / 代码生成 ─────────────────────────────────────────
     swig
 
-    # ── Documentation ───────────────────────────────────────────
+    # ── 文档 ───────────────────────────────────────────────────
     mkdocs
   ];
 
-  # ── direnv integration ──────────────────────────────────────────
+  # ── direnv 集成 ──────────────────────────────────────────────────
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;

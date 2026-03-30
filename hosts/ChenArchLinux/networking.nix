@@ -1,34 +1,18 @@
 { config, pkgs, ... }:
 
 {
-  # ── Hostname ────────────────────────────────────────────────────
+  # ── 主机名 ──────────────────────────────────────────────────────
   networking.hostName = "ChenArchLinux";
 
-  # ── NetworkManager ──────────────────────────────────────────────
+  # ── 网络管理 ────────────────────────────────────────────────────
   networking.networkmanager.enable = true;
 
-  # ── Firewall ────────────────────────────────────────────────────
-  # NixOS native nftables firewall (replaces firewalld)
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [
-      22    # SSH
-      111   # NFS portmapper
-      2049  # NFS
-      5355  # LLMNR
-    ];
-    allowedUDPPorts = [
-      5353  # mDNS
-      5355  # LLMNR
-    ];
-    # Open broader ranges if needed for development
-    allowPing = true;
-  };
-  networking.nftables.enable = true;
+  # ── 防火墙（已禁用）─────────────────────────────────────────────
+  networking.firewall.enable = false;
 
   # ── WireGuard ───────────────────────────────────────────────────
-  # WireGuard interfaces are managed by NetworkManager
-  # Import your existing WireGuard configs via `nmcli connection import`
+  # WireGuard 由 NetworkManager 管理
+  # 安装后通过 `nmcli connection import` 导入现有配置
 
   # ── SSH ─────────────────────────────────────────────────────────
   services.openssh = {
@@ -39,7 +23,7 @@
     };
   };
 
-  # ── NFS Server ──────────────────────────────────────────────────
+  # ── NFS 服务器 ──────────────────────────────────────────────────
   services.nfs.server = {
     enable = true;
     exports = ''
@@ -47,12 +31,12 @@
     '';
   };
 
-  # ── Wireless regulatory domain ──────────────────────────────────
-  # cfg80211 regdom=CN is set in boot.nix via extraModprobeConfig
-  # Install wireless-regdb for regulatory data
+  # ── 无线网络监管域 ─────────────────────────────────────────────
+  # cfg80211 监管域=CN 在 boot.nix 中通过 extraModprobeConfig 设置
+  # 安装 wireless-regdb 提供监管数据
   hardware.wirelessRegulatoryDatabase = true;
 
-  # ── Proxy / VPN ─────────────────────────────────────────────────
-  # Clash Verge Rev is installed as a user package
-  # Its system service is handled via its own systemd unit
+  # ── 代理 / VPN ──────────────────────────────────────────────────
+  # Clash Verge Rev 作为用户级软件包安装
+  # 其系统服务由其自带的 systemd 单元管理
 }

@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 
 {
-  # ── KDE Plasma 6 (Wayland) ─────────────────────────────────────
+  # ── KDE Plasma 6 (Wayland) 桌面环境 ─────────────────────────────────
   services.desktopManager.plasma6.enable = true;
 
   services.displayManager = {
@@ -32,7 +32,7 @@
     };
   };
 
-  # ── PipeWire (audio) ───────────────────────────────────────────
+  # ── PipeWire 音频 ───────────────────────────────────────────────
   services.pipewire = {
     enable = true;
     alsa.enable = true;
@@ -40,22 +40,22 @@
     pulse.enable = true;
     wireplumber.enable = true;
   };
-  # Disable PulseAudio (replaced by PipeWire)
+  # 禁用 PulseAudio（已由 PipeWire 替代）
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
 
-  # ── Bluetooth ──────────────────────────────────────────────────
+  # ── 蓝牙 ───────────────────────────────────────────────────────
   hardware.bluetooth = {
     enable = true;
     powerOnBoot = true;
   };
 
-  # ── Fcitx5 (Chinese input) ─────────────────────────────────────
+  # ── Fcitx5 中文输入法 ─────────────────────────────────────────
   i18n.inputMethod = {
     enable = true;
     type = "fcitx5";
     fcitx5.addons = with pkgs; [
-      fcitx5-chinese-addons
+      qt6Packages.fcitx5-chinese-addons
       fcitx5-gtk
       fcitx5-lua
       fcitx5-pinyin-moegirl
@@ -64,25 +64,25 @@
     fcitx5.waylandFrontend = true;
   };
 
-  # ── Fonts ──────────────────────────────────────────────────────
+  # ── 字体 ───────────────────────────────────────────────────────
   fonts = {
     enableDefaultPackages = true;
     packages = with pkgs; [
-      # CJK
+      # 中日韩字体
       noto-fonts-cjk-sans
       noto-fonts-cjk-serif
       wqy_microhei
       wqy_zenhei
 
-      # Latin / Mono
+      # 西文 / 等宽字体
       noto-fonts
-      noto-fonts-emoji
+      noto-fonts-color-emoji
       dejavu_fonts
       liberation_ttf
       fira-code
       fira-mono
       fira
-      ubuntu_font_family
+      ubuntu-classic
 
       # Nerd Fonts
       nerd-fonts.fira-code
@@ -99,13 +99,13 @@
     };
   };
 
-  # ── XDG portal (for Wayland screen sharing etc.) ────────────────
+  # ── XDG 门户（Wayland 屏幕共享等）─────────────────────────────────
   xdg.portal = {
     enable = true;
-    extraPortals = [ pkgs.xdg-desktop-portal-kde ];
+    # KDE Plasma 6 已自带 xdg-desktop-portal-kde
   };
 
-  # ── Locale & i18n ──────────────────────────────────────────────
+  # ── 语言与国际化 ────────────────────────────────────────────────
   i18n.defaultLocale = "en_US.UTF-8";
   i18n.extraLocaleSettings = {
     LC_ADDRESS = "zh_CN.UTF-8";

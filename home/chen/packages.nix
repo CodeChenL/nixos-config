@@ -2,20 +2,20 @@
 
 {
   home.packages = with pkgs; [
-    # ── Browsers ────────────────────────────────────────────────
+    # ── 浏览器 ────────────────────────────────────────────────
     firefox
     microsoft-edge
 
-    # ── Communication ───────────────────────────────────────────
+    # ── 通讯 ─────────────────────────────────────────────────
     telegram-desktop
     qq                         # linuxqq
-    wechat-uos                 # wechat-universal-bwrap equivalent
+    wechat-uos                 # 微信
     element-desktop
 
-    # ── Office ──────────────────────────────────────────────────
+    # ── 办公 ──────────────────────────────────────────────────
     libreoffice-fresh
 
-    # ── Media ───────────────────────────────────────────────────
+    # ── 媒体 ──────────────────────────────────────────────────
     obs-studio
     gimp
     darktable
@@ -24,8 +24,8 @@
     mediainfo
     ffmpeg-full
 
-    # ── Gaming ──────────────────────────────────────────────────
-    # Steam is system-level (programs.steam)
+    # ── 游戏 ──────────────────────────────────────────────────
+    # Steam 在系统级配置 (programs.steam)
     moonlight-qt
     mangohud
     proton-ge-bin
@@ -33,13 +33,13 @@
     winetricks
     dxvk
 
-    # ── 3D Printing / CAD ───────────────────────────────────────
+    # ── 3D 打印 / CAD ─────────────────────────────────────────────
     orca-slicer
     freecad
     kicad
     librecad
 
-    # ── Remote desktop ──────────────────────────────────────────
+    # ── 远程桌面 ──────────────────────────────────────────────
     remmina
     freerdp
     scrcpy
@@ -47,16 +47,16 @@
     putty
     moonlight-qt
 
-    # ── Proxy / VPN ─────────────────────────────────────────────
+    # ── 代理 / VPN ─────────────────────────────────────────────
     clash-verge-rev
     wireguard-tools
     proxychains-ng
 
-    # ── Download ────────────────────────────────────────────────
+    # ── 下载 ───────────────────────────────────────────────────
     aria2
     axel
 
-    # ── Network tools ───────────────────────────────────────────
+    # ── 网络工具 ───────────────────────────────────────────────
     nmap
     iperf3
     traceroute
@@ -66,23 +66,23 @@
     net-tools
     wakeonlan
 
-    # ── System monitoring ───────────────────────────────────────
+    # ── 系统监控 ───────────────────────────────────────────────
     btop
     htop
     s-tui
     sysstat
     i7z
-    cpupower
+    linuxPackages_zen.cpupower
     intel-gpu-tools
 
-    # ── File tools ──────────────────────────────────────────────
+    # ── 文件工具 ────────────────────────────────────────────────
     bat
     dust
     yazi
     vifm
     lazygit
     tmux
-    neofetch
+    fastfetch
     most
     bc
     pv
@@ -92,18 +92,18 @@
     meld
     grsync
 
-    # ── Archive ──────────────────────────────────────────────────
+    # ── 压缩工具 ─────────────────────────────────────────────────
     lrzip
     lzip
     lzop
     cpio
 
-    # ── Disk / FS ───────────────────────────────────────────────
+    # ── 磁盘 / 文件系统 ───────────────────────────────────────────
     hdparm
     gptfdisk
     dosfstools
     exfatprogs
-    squashfs-tools
+    squashfsTools
     ventoy
     testdisk
     foremost
@@ -113,7 +113,7 @@
     patchelf
     read-edid
 
-    # ── Hardware ──────────────────────────────────────────────────
+    # ── 硬件工具 ─────────────────────────────────────────────────
     lshw
     evtest
     picocom
@@ -121,13 +121,13 @@
     usbutils
     pciutils
 
-    # ── Multimedia CLI ──────────────────────────────────────────
+    # ── 多媒体 CLI ────────────────────────────────────────────
     asciinema
     optipng
     gnuplot
 
-    # ── Misc CLI ────────────────────────────────────────────────
-    expac
+    # ── 其他 CLI ────────────────────────────────────────────────
+    # expac 是 Arch 专用工具，NixOS 中使用 nix-index 替代
     fwupd
     efibootmgr
     shellcheck

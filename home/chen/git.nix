@@ -4,17 +4,20 @@
   programs.git = {
     enable = true;
 
-    userName = "Jiali Chen";
-    userEmail = "chenjiali@radxa.com";
-
     signing = {
       key = "75B292EBF683FF87";
       signByDefault = true;
+      format = "openpgp";
     };
 
     lfs.enable = true;
 
-    extraConfig = {
+    settings = {
+      user = {
+        name = "Jiali Chen";
+        email = "chenjiali@radxa.com";
+      };
+
       core.editor = "code --wait";
 
       pull.rebase = true;

@@ -11,7 +11,7 @@
     ./virtualization.nix
   ];
 
-  # ── User account ────────────────────────────────────────────────
+  # ── 用户账户 ─────────────────────────────────────────────────────
   users.users.chen = {
     isNormalUser = true;
     description = "Jiali Chen";
@@ -24,7 +24,7 @@
       "video"
       "input"
       "networkmanager"
-      "dialout"  # serial ports (replaces uucp on Arch)
+      "dialout"  # 串口访问（对应 Arch 上的 uucp 组）
       "adbusers"
       "adm"
     ];
@@ -34,14 +34,14 @@
   # ── Sudo ────────────────────────────────────────────────────────
   security.sudo.wheelNeedsPassword = true;
 
-  # ── Console ─────────────────────────────────────────────────────
+  # ── 控制台 ──────────────────────────────────────────────────────
   console = {
     font = "ter-v24n";
     packages = [ pkgs.terminus_font ];
     useXkbConfig = false;
   };
 
-  # ── Base system packages ────────────────────────────────────────
+  # ── 基础系统软件包 ────────────────────────────────────────────────
   environment.systemPackages = with pkgs; [
     vim
     git
@@ -58,11 +58,11 @@
     tree
   ];
 
-  # ── Programs that need system-wide wrappers ─────────────────────
+  # ── 需要系统级包装的程序 ─────────────────────────────────────────
   programs.bash.completion.enable = true;
   programs.nano.enable = false;
 
-  # ── Steam (needs system-level config for 32-bit libs) ───────────
+  # ── Steam（需要系统级 32 位库配置）────────────────────────────────
   programs.steam = {
     enable = true;
     remotePlay.openFirewall = true;
@@ -71,7 +71,7 @@
   };
   programs.gamemode.enable = true;
 
-  # ── command-not-found (via nix-index) ───────────────────────────
+  # ── 命令未找到提示（通过 nix-index）──────────────────────────────────
   programs.command-not-found.enable = false;
   programs.nix-index = {
     enable = true;
