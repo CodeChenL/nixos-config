@@ -29,6 +29,10 @@
     autoStart = true;
     capSysAdmin = true;  # 屏幕捕获需要
     openFirewall = true;
+    package = pkgs.sunshine.override {
+      cudaSupport = true;
+      cudaPackages = pkgs.cudaPackages;
+    };
   };
 
   # ── RustDesk（远程桌面服务守护进程）─────────────────────────────────
