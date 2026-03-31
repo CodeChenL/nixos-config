@@ -58,8 +58,6 @@
 
       trailer.changeid.key = "Change-Id";
 
-      submodule.fetchJobs = 24;
-
       safe.directory = [
         "/mnt"
         "/run/media/chen/rootfs/home"
