@@ -1,6 +1,15 @@
-# 自定义软件包修改的 Overlay。
-# 根据需要在此添加覆写。
-final: prev: {
-  # 示例：
-  # myPackage = prev.myPackage.overrideAttrs (old: { ... });
+# 自定义 Overlay：注入 unstable / master / NUR 通道包
+inputs: final: prev: {
+  unstable = import inputs.nixpkgs-unstable {
+    system = prev.stdenv.hostPlatform.system;
+    config = { allowUnfree = true; };
+  };
+  master = import inputs.nixpkgs-master {
+    system = prev.stdenv.hostPlatform.system;
+    config = { allowUnfree = true; };
+  };
+  nur = import inputs.NUR {
+    pkgs = prev;
+    nurpkgs = prev;
+  };
 }

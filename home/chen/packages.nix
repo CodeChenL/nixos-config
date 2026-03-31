@@ -1,9 +1,13 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   imports = [ ./packages-cli.nix ];
 
   home.packages = with pkgs; [
+    # AI Tools
+    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code
+    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.cc-switch-cli
+
     # ── 浏览器 ────────────────────────────────────────────────
     firefox
     microsoft-edge

@@ -24,30 +24,16 @@
       url = "github:nix-community/NixOS-WSL";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    llm-agents = {
+      url = "github:numtide/llm-agents.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nixos-hardware, edl-ng, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, nixos-hardware, edl-ng, llm-agents, ... }@inputs:
     let
-      mkOverlays = { config, pkgs, ... }: {
-        nixpkgs.config.allowUnfree = true;
-        nixpkgs.overlays = [
-          (import ./overlays)
-          (final: prev: {
-            unstable = import inputs.nixpkgs-unstable {
-              config = config.nixpkgs.config;
-              system = pkgs.stdenv.hostPlatform.system;
-            };
-            master = import inputs.nixpkgs-master {
-              config = config.nixpkgs.config;
-              system = pkgs.stdenv.hostPlatform.system;
-            };
-            nur = import inputs.NUR {
-              inherit pkgs;
-              nurpkgs = pkgs;
-            };
-          })
-        ];
-      };
+      commonOverlay = import ./overlays inputs;
     in
     {
       nixosConfigurations.ChenIdeaCentre = nixpkgs.lib.nixosSystem {
@@ -65,29 +51,13 @@
             home-manager.extraSpecialArgs = { inherit inputs; };
           }
 
-          ({ config, pkgs, ... }: {
+          {
             nixpkgs.config.allowUnfree = true;
             nixpkgs.config.permittedInsecurePackages = [
               "ventoy-1.1.10"
             ];
-            nixpkgs.overlays = [
-              (import ./overlays)
-              (final: prev: {
-                unstable = import inputs.nixpkgs-unstable {
-                  config = config.nixpkgs.config;
-                  system = pkgs.stdenv.hostPlatform.system;
-                };
-                master = import inputs.nixpkgs-master {
-                  config = config.nixpkgs.config;
-                  system = pkgs.stdenv.hostPlatform.system;
-                };
-                nur = import inputs.NUR {
-                  inherit pkgs;
-                  nurpkgs = pkgs;
-                };
-              })
-            ];
-          })
+            nixpkgs.overlays = [ commonOverlay ];
+          }
         ];
       };
 
@@ -106,7 +76,10 @@
             home-manager.extraSpecialArgs = { inherit inputs; };
           }
 
-          mkOverlays
+          {
+            nixpkgs.config.allowUnfree = true;
+            nixpkgs.overlays = [ commonOverlay ];
+          }
         ];
       };
     };
