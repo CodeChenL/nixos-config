@@ -1,6 +1,8 @@
 { config, pkgs, ... }:
 
 {
+  imports = [ ./packages-cli.nix ];
+
   home.packages = with pkgs; [
     # ── 浏览器 ────────────────────────────────────────────────
     firefox
@@ -48,55 +50,22 @@
     rustdesk
     putty
 
-    # ── 代理 / VPN ─────────────────────────────────────────────
+    # ── 代理 / VPN（桌面专用）──────────────────────────────────
     clash-verge-rev
-    wireguard-tools
-    proxychains-ng
 
-    # ── 下载 ───────────────────────────────────────────────────
-    aria2
-    axel
-
-    # ── 网络工具 ───────────────────────────────────────────────
-    nmap
-    iperf3
-    traceroute
+    # ── 网络工具（桌面专用）──────────────────────────────────────
     aircrack-ng
-    bind          # dig, nslookup
-    inetutils
-    net-tools
     wakeonlan
 
-    # ── 系统监控 ───────────────────────────────────────────────
-    btop
+    # ── 系统监控（桌面专用）──────────────────────────────────────
     s-tui
-    sysstat
     i7z
     unstable.linuxPackages_latest.cpupower
     intel-gpu-tools
 
-    # ── 文件工具 ────────────────────────────────────────────────
-    bat
-    dust
-    yazi
-    vifm
-    lazygit
-    tmux
-    fastfetch
-    most
-    bc
-    pv
-    dos2unix
-    mmv
-    rsync
+    # ── 文件工具（桌面专用）──────────────────────────────────────
     meld
     grsync
-
-    # ── 压缩工具 ─────────────────────────────────────────────────
-    lrzip
-    lzip
-    lzop
-    cpio
 
     # ── 磁盘 / 文件系统 ───────────────────────────────────────────
     hdparm
@@ -123,11 +92,8 @@
     optipng
     gnuplot
 
-    # ── 其他 CLI ────────────────────────────────────────────────
-    # expac 是 Arch 专用工具，NixOS 中使用 nix-index 替代
+    # ── 其他 CLI（桌面专用）──────────────────────────────────────
     efibootmgr
-    shellcheck
-    yamlfmt
     yq
     pandoc
 

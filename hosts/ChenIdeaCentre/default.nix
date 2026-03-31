@@ -2,6 +2,7 @@
 
 {
   imports = [
+    ../common.nix
     ./hardware-configuration.nix
     ./boot.nix
     ./nvidia.nix
@@ -14,12 +15,9 @@
   # 强制按声明式账户状态写回 /etc/shadow，避免已有锁定账户跳过密码更新
   users.mutableUsers = false;
 
-  # ── 用户账户 ─────────────────────────────────────────────────────
+  # ── 用户账户（桌面专用扩展）──────────────────────────────────────
   users.users.chen = {
-    isNormalUser = true;
-    description = "Jiali Chen";
     extraGroups = [
-      "wheel"
       "docker"
       "libvirtd"
       "kvm"
@@ -43,29 +41,12 @@
     packages = [ pkgs.terminus_font ];
   };
 
-  # ── 基础系统软件包 ────────────────────────────────────────────────
+  # ── 桌面专用系统软件包 ──────────────────────────────────────────
   environment.systemPackages = with pkgs; [
-    vim
-    git
-    wget
-    curl
-    htop
-    pciutils
-    usbutils
-    lsof
-    file
-    unzip
-    unrar
-    p7zip
-    tree
-
     # SBC program tools
     inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
     rkdeveloptool
   ];
-
-  # ── 需要系统级包装的程序 ─────────────────────────────────────────
-  programs.nano.enable = false;
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────
   programs.steam = {
@@ -75,13 +56,6 @@
     gamescopeSession.enable = true;
   };
   programs.gamemode.enable = true;
-
-  # ── 命令未找到提示（通过 nix-index）──────────────────────────────────
-  programs.command-not-found.enable = false;
-  programs.nix-index = {
-    enable = true;
-    enableBashIntegration = true;
-  };
 
   # 只保留最近 30 个 generation（GRUB 启动菜单中的条目数）
   boot.loader.grub.configurationLimit = 30;

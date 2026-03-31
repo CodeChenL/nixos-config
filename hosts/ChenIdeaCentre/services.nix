@@ -1,9 +1,6 @@
 { config, pkgs, ... }:
 
 {
-  # ── 时区与 NTP ──────────────────────────────────────────────────
-  time.timeZone = "Asia/Shanghai";
-
   # ── 传感器 ──────────────────────────────────────────────────────
   hardware.sensor.iio.enable = true;
 
@@ -99,30 +96,4 @@
     # KDE inotify 文件监控上限
     "fs.inotify.max_user_watches" = 540672;
   };
-
-  # ── Nix 设置 ─────────────────────────────────────────────────────
-  nix = {
-    settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      auto-optimise-store = true;
-      trusted-users = [ "root" "chen" ];
-      substituters = [
-        "https://mirrors.ustc.edu.cn/nix-channels/store"
-        "https://cache.nixos.org"
-        "https://nix-community.cachix.org"
-      ];
-      trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
-        "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-      ];
-    };
-    gc = {
-      automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 15d";
-    };
-  };
-
-  # ── 系统状态版本 ────────────────────────────────────────────────
-  system.stateVersion = "24.11";
 }
