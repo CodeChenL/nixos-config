@@ -4,7 +4,6 @@
   # ── Docker ──────────────────────────────────────────────────────
   virtualisation.docker = {
     enable = true;
-    storageDriver = "overlay2";
     autoPrune = {
       enable = true;
       dates = "weekly";
@@ -17,7 +16,6 @@
   # ── Podman ──────────────────────────────────────────────────────
   virtualisation.podman = {
     enable = true;
-    dockerCompat = false; # Docker 已启用，无需兼容模式
     defaultNetwork.settings.dns_enabled = true;
   };
 
@@ -37,10 +35,15 @@
   virtualisation.waydroid.enable = true;
 
   # ── QEMU binfmt（多架构用户态模拟）─────────────────────────────
+  # preferStaticEmulators: 使用静态链接的 qemu，容器内无需访问宿主 /nix/store
+  # fixBinary: 注册时预加载解释器，容器/chroot 中也能工作
   boot.binfmt.emulatedSystems = [
     "aarch64-linux"
     "armv7l-linux"
   ];
+  boot.binfmt.preferStaticEmulators = true;
+  boot.binfmt.registrations.aarch64-linux.fixBinary = true;
+  boot.binfmt.registrations.armv7l-linux.fixBinary = true;
 
   # ── 容器运行时软件包 ────────────────────────────────────────────
   environment.systemPackages = with pkgs; [

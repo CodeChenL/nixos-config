@@ -10,18 +10,10 @@
       wayland.enable = true;
       theme = "breeze";
       settings = {
-        General = {
-          Numlock = "on";
-          HaltCommand = "/run/current-system/sw/bin/systemctl poweroff";
-          RebootCommand = "/run/current-system/sw/bin/systemctl reboot";
-        };
+        General.Numlock = "on";
         Theme = {
           CursorTheme = "breeze_cursors";
           Font = "Ubuntu Mono,18,-1,5,600,0,0,0,0,0,0,0,0,0,0,1,SemiBold";
-        };
-        Users = {
-          MaximumUid = 60513;
-          MinimumUid = 1000;
         };
       };
     };
@@ -38,17 +30,11 @@
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
-    wireplumber.enable = true;
   };
-  # 禁用 PulseAudio（已由 PipeWire 替代）
-  services.pulseaudio.enable = false;
   security.rtkit.enable = true;
 
   # ── 蓝牙 ───────────────────────────────────────────────────────
-  hardware.bluetooth = {
-    enable = true;
-    powerOnBoot = true;
-  };
+  hardware.bluetooth.enable = true;
 
   # ── Fcitx5 中文输入法 ─────────────────────────────────────────
   i18n.inputMethod = {
@@ -99,12 +85,6 @@
     };
   };
 
-  # ── XDG 门户（Wayland 屏幕共享等）─────────────────────────────────
-  xdg.portal = {
-    enable = true;
-    # KDE Plasma 6 已自带 xdg-desktop-portal-kde
-  };
-
   # ── 语言与国际化 ────────────────────────────────────────────────
   i18n.defaultLocale = "en_US.UTF-8";
   i18n.extraLocaleSettings = {
@@ -119,7 +99,13 @@
     LC_TIME = "zh_CN.UTF-8";
   };
 
+  # ── KDE 额外应用 ──────────────────────────────────────────────
+  environment.systemPackages = with pkgs; [
+    kdePackages.yakuake
+  ];
+
   environment.sessionVariables = {
+    # 输入法
     XMODIFIERS = "@im=fcitx";
     SDL_IM_MODULE = "fcitx";
     GLFW_IM_MODULE = "ibus";

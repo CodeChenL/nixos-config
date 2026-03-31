@@ -1,135 +1,66 @@
 {
-  description = "ChenArchLinux NixOS 配置";
+  description = "ChenIdeaCentre NixOS 配置";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
     home-manager = {
-      url = "github:nix-community/home-manager";
+      url = "github:nix-community/home-manager/release-25.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     nixos-hardware.url = "github:NixOS/nixos-hardware";
+
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-master.url = "github:NixOS/nixpkgs/master";
+    NUR.url = "github:nix-community/NUR";
+
+    edl-ng = {
+      url = "github:strongtz/edl-ng";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nixos-hardware, ... }@inputs:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
-        overlays = [ (import ./overlays) ];
-      };
-    in
+  outputs = { self, nixpkgs, home-manager, nixos-hardware, edl-ng, ... }@inputs:
     {
-      nixosConfigurations.ChenArchLinux = nixpkgs.lib.nixosSystem {
-        inherit system;
+      nixosConfigurations.ChenIdeaCentre = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
-          ./hosts/ChenArchLinux
+          ./hosts/ChenIdeaCentre
 
           home-manager.nixosModules.home-manager
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
+            home-manager.backupFileExtension = "hm-bak";
             home-manager.users.chen = import ./home/chen;
             home-manager.extraSpecialArgs = { inherit inputs; };
           }
 
-          {
+          ({ config, pkgs, ... }: {
             nixpkgs.config.allowUnfree = true;
             nixpkgs.config.permittedInsecurePackages = [
               "ventoy-1.1.10"
             ];
-            nixpkgs.overlays = [ (import ./overlays) ];
-          }
-        ];
-      };
-
-      # ── U 盘测试配置 ──────────────────────────────────────────────
-      nixosConfigurations.test-usb = nixpkgs.lib.nixosSystem {
-        inherit system;
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/ChenArchLinux
-
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.users.chen = import ./home/chen;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-          }
-
-          {
-            nixpkgs.config.allowUnfree = true;
-            nixpkgs.config.permittedInsecurePackages = [
-              "ventoy-1.1.10"
+            nixpkgs.overlays = [
+              (import ./overlays)
+              # 将 unstable / master / nur 挂载到 pkgs 下
+              (final: prev: {
+                unstable = import inputs.nixpkgs-unstable {
+                  config = config.nixpkgs.config;
+                  system = pkgs.stdenv.hostPlatform.system;
+                };
+                master = import inputs.nixpkgs-master {
+                  config = config.nixpkgs.config;
+                  system = pkgs.stdenv.hostPlatform.system;
+                };
+                nur = import inputs.NUR {
+                  inherit pkgs;
+                  nurpkgs = pkgs;
+                };
+              })
             ];
-            nixpkgs.overlays = [ (import ./overlays) ];
-          }
-
-          # U 盘测试覆盖层
-          ({ lib, pkgs, modulesPath, ... }: {
-            # 替换硬件配置
-            disabledModules = [ ./hosts/ChenArchLinux/hardware-configuration.nix ];
-            imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
-
-            # U 盘文件系统
-            fileSystems."/" = lib.mkForce {
-              device = "/dev/disk/by-label/nixos";
-              fsType = "ext4";
-            };
-            fileSystems."/boot" = lib.mkForce {
-              device = "/dev/disk/by-label/NIXBOOT";
-              fsType = "vfat";
-              options = [ "fmask=0022" "dmask=0022" ];
-            };
-            # 不挂载 /home，使用根分区下的 /home
-            fileSystems."/home" = lib.mkForce {
-              device = "none";
-              fsType = "tmpfs";
-              options = [ "size=4G" ];
-            };
-            swapDevices = lib.mkForce [ ];
-            zramSwap = lib.mkForce { enable = true; algorithm = "zstd"; memoryPercent = 50; };
-
-            # 引导配置（U 盘用 GRUB 兼容 BIOS+EFI）
-            boot.loader.grub = lib.mkForce {
-              enable = true;
-              efiSupport = true;
-              efiInstallAsRemovable = true;
-              device = "nodev";
-            };
-            boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
-            boot.plymouth.enable = lib.mkForce false;
-            boot.initrd.availableKernelModules = lib.mkForce [
-              "xhci_pci" "ahci" "usb_storage" "usbhid" "sd_mod"
-              "ehci_pci" "uas" "ext4"
-            ];
-            boot.kernelModules = lib.mkForce [ ];
-            boot.extraModulePackages = lib.mkForce [ ];
-            boot.kernelParams = lib.mkForce [ "rootwait" "rootdelay=5" ];
-
-            # 禁用 NVIDIA（测试不需要）
-            services.xserver.videoDrivers = lib.mkForce [ "modesetting" ];
-            hardware.nvidia.modesetting.enable = lib.mkForce false;
-            hardware.nvidia.open = lib.mkForce false;
-            hardware.nvidia.prime = lib.mkForce {};
-            hardware.nvidia.package = lib.mkForce pkgs.linuxPackages.nvidiaPackages.stable;
-            hardware.nvidia-container-toolkit.enable = lib.mkForce false;
-
-            # 禁用不需要的服务
-            services.nfs.server.enable = lib.mkForce false;
-            virtualisation.waydroid.enable = lib.mkForce false;
-
-            # 测试密码（明文: test）
-            users.users.chen.initialHashedPassword = "$6$AFcKuacmZVUqsasx$wyTUch56N7coEOq6hzj8cedQjVMf44ZkJmCzCg021cbmwNaEfcHIDA3rhMdRb9USD1XyYKEwIR2wfE.Y6Bfsy0";
-            users.users.root.initialHashedPassword = "$6$AFcKuacmZVUqsasx$wyTUch56N7coEOq6hzj8cedQjVMf44ZkJmCzCg021cbmwNaEfcHIDA3rhMdRb9USD1XyYKEwIR2wfE.Y6Bfsy0";
-
-            # 不需要微码和固件
-            hardware.cpu.intel.updateMicrocode = lib.mkForce false;
-            hardware.enableRedistributableFirmware = lib.mkForce true;
           })
         ];
       };

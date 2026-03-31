@@ -7,10 +7,12 @@
     microsoft-edge
 
     # ── 通讯 ─────────────────────────────────────────────────
+    feishu
     telegram-desktop
     qq                         # linuxqq
     wechat-uos                 # 微信
     element-desktop
+    thunderbird
 
     # ── 办公 ──────────────────────────────────────────────────
     libreoffice-fresh
@@ -30,8 +32,7 @@
     moonlight-qt
     mangohud
     protonup-qt
-    wine
-    winetricks
+    wineWow64Packages.stable
     dxvk
 
     # ── 3D 打印 / CAD ─────────────────────────────────────────────
@@ -46,7 +47,6 @@
     scrcpy
     rustdesk
     putty
-    moonlight-qt
 
     # ── 代理 / VPN ─────────────────────────────────────────────
     clash-verge-rev
@@ -69,11 +69,10 @@
 
     # ── 系统监控 ───────────────────────────────────────────────
     btop
-    htop
     s-tui
     sysstat
     i7z
-    linuxPackages_zen.cpupower
+    unstable.linuxPackages_latest.cpupower
     intel-gpu-tools
 
     # ── 文件工具 ────────────────────────────────────────────────
@@ -111,7 +110,6 @@
     cdrtools
     wimlib
     mtools
-    patchelf
     read-edid
 
     # ── 硬件工具 ─────────────────────────────────────────────────
@@ -119,8 +117,6 @@
     evtest
     picocom
     minicom
-    usbutils
-    pciutils
 
     # ── 多媒体 CLI ────────────────────────────────────────────
     asciinema
@@ -129,7 +125,6 @@
 
     # ── 其他 CLI ────────────────────────────────────────────────
     # expac 是 Arch 专用工具，NixOS 中使用 nix-index 替代
-    fwupd
     efibootmgr
     shellcheck
     yamlfmt

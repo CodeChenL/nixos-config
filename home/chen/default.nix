@@ -24,4 +24,8 @@
 
   # ── XDG 目录 ─────────────────────────────────────────────────────
   xdg.enable = true;
+
+  # Yakuake 开机自启（用户级 XDG autostart）
+  xdg.configFile."autostart/org.kde.yakuake.desktop".source =
+    "${pkgs.kdePackages.yakuake}/share/applications/org.kde.yakuake.desktop";
 }

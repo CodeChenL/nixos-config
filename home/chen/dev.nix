@@ -3,7 +3,7 @@
 {
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
-    vscode
+    unstable.vscode   # 使用 unstable 最新版 VS Code
     vim
 
     # ── 构建系统 ───────────────────────────────────────────────
@@ -38,8 +38,7 @@
     uv
 
     # ── Node.js ─────────────────────────────────────────────────
-    nodejs
-    nodePackages.npm
+    nodejs  # 已自带 npm 和 corepack
     yarn
     nodePackages.prettier
 
@@ -69,10 +68,9 @@
     binwalk
 
     # ── 版本控制 / CI ───────────────────────────────────────────
-    git
+    # git 和 lazygit 已在 packages.nix 中安装
     git-lfs
     github-cli
-    lazygit
     pre-commit
     gitRepo
 
@@ -85,7 +83,7 @@
     patchelf
 
     # ── Shell 工具 ───────────────────────────────────────────────
-    shellcheck
+    # shellcheck 已在 packages.nix 中安装
     direnv
     nix-direnv
 
@@ -103,6 +101,5 @@
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;
-    enableBashIntegration = true;
   };
 }

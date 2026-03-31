@@ -1,6 +1,12 @@
 { config, pkgs, ... }:
 
 {
+  # ── Git commit 模板文件 ──────────────────────────────────────────
+  home.file.".gitmessage.txt".text = ''
+
+    Signed-off-by: Jiali Chen <chenjiali@radxa.com>
+  '';
+
   programs.git = {
     enable = true;
 
@@ -33,8 +39,6 @@
 
       http.postBuffer = 2048576000;
 
-      color.ui = "auto";
-
       credential = {
         "https://github.com" = {
           helper = [
@@ -55,13 +59,6 @@
       trailer.changeid.key = "Change-Id";
 
       submodule.fetchJobs = 24;
-
-      filter.lfs = {
-        clean = "git-lfs clean -- %f";
-        smudge = "git-lfs smudge -- %f";
-        process = "git-lfs filter-process";
-        required = true;
-      };
 
       safe.directory = [
         "/mnt"

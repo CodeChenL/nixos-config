@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   imports = [
@@ -10,6 +10,9 @@
     ./services.nix
     ./virtualization.nix
   ];
+
+  # 强制按声明式账户状态写回 /etc/shadow，避免已有锁定账户跳过密码更新
+  users.mutableUsers = false;
 
   # ── 用户账户 ─────────────────────────────────────────────────────
   users.users.chen = {
@@ -28,17 +31,16 @@
       "adbusers"
       "adm"
     ];
-    shell = pkgs.bash;
+    hashedPassword = "$6$WenrS6DTvNS5Kcq6$uW1rN2GwHQ.AgMeE4ISsidWfWBvRfzFc6XlFumoV8WvvD.S57rxPTKXkGbmF0qFZaQf/V3okI3ndsM7FufsNZ0";
   };
 
-  # ── Sudo ────────────────────────────────────────────────────────
-  security.sudo.wheelNeedsPassword = true;
+  # root 密码
+  users.users.root.hashedPassword = "$6$4DL7XrtMGOISeaTG$u4qBpwa2ckcrXEVIq0owD/1LSo4Lx8Mnv4MADd8MwXNrYyIYQMgUT8Y.NqsYFkUrTfsSACSX7gytJTopATBLW0";
 
   # ── 控制台 ──────────────────────────────────────────────────────
   console = {
     font = "ter-v24n";
     packages = [ pkgs.terminus_font ];
-    useXkbConfig = false;
   };
 
   # ── 基础系统软件包 ────────────────────────────────────────────────
@@ -56,10 +58,13 @@
     unrar
     p7zip
     tree
+
+    # SBC program tools
+    inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
+    rkdeveloptool
   ];
 
   # ── 需要系统级包装的程序 ─────────────────────────────────────────
-  programs.bash.completion.enable = true;
   programs.nano.enable = false;
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────
@@ -77,4 +82,7 @@
     enable = true;
     enableBashIntegration = true;
   };
+
+  # 只保留最近 30 个 generation（GRUB 启动菜单中的条目数）
+  boot.loader.grub.configurationLimit = 30;
 }
