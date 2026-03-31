@@ -41,9 +41,8 @@
     packages = [ pkgs.terminus_font ];
   };
 
-  # ── 桌面专用系统软件包 ──────────────────────────────────────────
+  # ── SBC 编程工具（CLI）──────────────────────────────────────────
   environment.systemPackages = with pkgs; [
-    # SBC program tools
     inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
     rkdeveloptool
   ];
