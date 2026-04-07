@@ -1,5 +1,35 @@
 { config, pkgs, inputs, ... }:
 
+let
+  copilot-api = pkgs.buildNpmPackage rec {
+    pname = "copilot-api";
+    version = "0.7.0";
+
+    src = pkgs.fetchurl {
+      url = "https://registry.npmjs.org/${pname}/-/${pname}-${version}.tgz";
+      hash = "sha256-H8z9K/6L+74AwapTX/uitxMfx7yR64MOPUx4v+TwYiA=";
+    };
+
+    sourceRoot = "package";
+    patches = [ ../../overlays/copilot-api-refresh-retry.patch ];
+    postPatch = ''
+      cp ${../../overlays/copilot-api-package-lock.json} package-lock.json
+    '';
+
+    npmDepsHash = "sha256-WJTnG9xeyRnExMe26nIjF0ehOfEj+aCPF7SCu6LkJe0=";
+    dontNpmBuild = true;
+    npmFlags = [ "--ignore-scripts" ];
+    npmPackFlags = [ "--ignore-scripts" ];
+
+    meta = {
+      description = "Turn GitHub Copilot into OpenAI/Anthropic API compatible server";
+      homepage = "https://github.com/ericc-ch/copilot-api";
+      license = pkgs.lib.licenses.mit;
+      mainProgram = "copilot-api";
+    };
+  };
+in
+
 {
   imports = [ ./packages-cli.nix ];
 
@@ -7,6 +37,7 @@
     # AI Tools
     inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code
     inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.cc-switch-cli
+    copilot-api
 
     # ── 浏览器 ────────────────────────────────────────────────
     firefox

@@ -1,0 +1,69 @@
+--- a/dist/main.js
++++ b/dist/main.js
+@@ -186,6 +186,7 @@
+ const sleep = (ms) => new Promise((resolve) => {
+	setTimeout(resolve, ms);
+ });
++const COPILOT_TOKEN_RETRY_INTERVAL = 1e3;
+ const isNullish = (value) => value === null || value === void 0;
+ async function cacheModels() {
+	state.models = await getModels();
+@@ -228,22 +229,40 @@
+ //#region src/lib/token.ts
+ const readGithubToken = () => fs.readFile(PATHS.GITHUB_TOKEN_PATH, "utf8");
+ const writeGithubToken = (token) => fs.writeFile(PATHS.GITHUB_TOKEN_PATH, token);
++async function fetchCopilotTokenWithRetry(logFailure) {
++	while (true) {
++		try {
++			return await getCopilotToken();
++		} catch (error) {
++			logFailure(error);
++			consola.info(`Retrying Copilot token request in ${COPILOT_TOKEN_RETRY_INTERVAL}ms`);
++			await sleep(COPILOT_TOKEN_RETRY_INTERVAL);
++		}
++	}
++}
+ const setupCopilotToken = async () => {
+-	const { token, refresh_in } = await getCopilotToken();
+-	state.copilotToken = token;
+-	consola.debug("GitHub Copilot Token fetched successfully!");
+-	if (state.showToken) consola.info("Copilot token:", token);
+-	const refreshInterval = (refresh_in - 60) * 1e3;
+-	setInterval(async () => {
+-		consola.debug("Refreshing Copilot token");
+-		try {
+-			const { token: token$1 } = await getCopilotToken();
+-			state.copilotToken = token$1;
+-			consola.debug("Copilot token refreshed");
+-			if (state.showToken) consola.info("Refreshed Copilot token:", token$1);
+-		} catch (error) {
+-			consola.error("Failed to refresh Copilot token:", error);
+-			throw error;
+-		}
+-	}, refreshInterval);
++	const updateToken = async (isRefresh = false) => {
++		const action = isRefresh ? "refresh" : "fetch";
++		const { token, refresh_in } = await fetchCopilotTokenWithRetry((error) => {
++			consola.error(`Failed to ${action} Copilot token:`, error);
++		});
++		state.copilotToken = token;
++		if (isRefresh) {
++			consola.debug("Copilot token refreshed");
++			if (state.showToken) consola.info("Refreshed Copilot token:", token);
++		} else {
++			consola.debug("GitHub Copilot Token fetched successfully!");
++			if (state.showToken) consola.info("Copilot token:", token);
++		}
++		return Math.max(refresh_in - 60, 1) * 1e3;
++	};
++	const scheduleRefresh = (delay) => {
++		setTimeout(async () => {
++			consola.debug("Refreshing Copilot token");
++			const refreshInterval = await updateToken(true);
++			scheduleRefresh(refreshInterval);
++		}, delay);
++	};
++	const refreshInterval = await updateToken();
++	scheduleRefresh(refreshInterval);
+ };
+ };
