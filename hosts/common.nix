@@ -36,6 +36,7 @@
     enable = true;
     enableBashIntegration = true;
   };
+  programs.nix-ld.enable = true;
 
   # ── Nix 设置 ─────────────────────────────────────────────────────
   nix = {

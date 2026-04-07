@@ -17,6 +17,7 @@
 
   # ── 用户账户（桌面专用扩展）──────────────────────────────────────
   users.users.chen = {
+    linger = true;
     extraGroups = [
       "docker"
       "libvirtd"

@@ -70,6 +70,9 @@
     };
   };
 
+  # ── Linyaps（玲珑）──────────────────────────────────────────────
+  services.linyaps.enable = true;
+
   # ── Flatpak（国产应用备用）───────────────────────────────────────────
   services.flatpak.enable = true;
 
@@ -87,8 +90,6 @@
     SUBSYSTEMS=="usb", ATTRS{idVendor}=="05c6", ATTRS{idProduct}=="9008", MODE="0666", GROUP="wheel"
     ACTION=="bind", SUBSYSTEM=="usb", ENV{ID_USB_VENDOR_ID}=="05c6", ENV{ID_USB_MODEL_ID}=="9008", GROUP="wheel"
 
-    # USB 大容量存储重命名
-    ACTION=="add", SUBSYSTEM=="block", ENV{ID_USB_DRIVER}=="usb-storage", ENV{DEVTYPE}=="disk", NAME="msd%n"
   '';
 
   # ── sysctl 调优 ────────────────────────────────────────────────

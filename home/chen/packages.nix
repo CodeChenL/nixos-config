@@ -1,4 +1,4 @@
-{ config, pkgs, inputs, ... }:
+{ config, pkgs, inputs, osConfig ? { }, ... }:
 
 let
   copilot-api = pkgs.buildNpmPackage rec {
@@ -44,6 +44,7 @@ in
     microsoft-edge
 
     # ── 通讯 ─────────────────────────────────────────────────
+    pkgs.nur.repos.xddxdd.dingtalk
     feishu
     telegram-desktop
     qq                         # linuxqq
@@ -70,6 +71,7 @@ in
     mangohud
     protonup-qt
     wineWow64Packages.stable
+    winetricks
     dxvk
 
     # ── 3D 打印 / CAD ─────────────────────────────────────────────
@@ -130,9 +132,34 @@ in
     # ── 其他 CLI（桌面专用）──────────────────────────────────────
     efibootmgr
     yq
+    jq
     pandoc
 
     # ── Ollama (AI) ─────────────────────────────────────────────
     ollama
+  ] ++ pkgs.lib.optionals (!(osConfig.services.linyaps.enable or false)) [
+    # 容器化应用运行环境
+    linyaps
   ];
+
+  systemd.user.services.copilot-api = {
+    Unit = {
+      Description = "Copilot API server";
+    };
+
+    Service = {
+      ExecStart = "${copilot-api}/bin/copilot-api start";
+      Environment = [
+        "HOME=${config.home.homeDirectory}"
+        "XDG_DATA_HOME=${config.xdg.dataHome}"
+      ];
+      Restart = "always";
+      RestartSec = 5;
+      WorkingDirectory = config.home.homeDirectory;
+    };
+
+    Install = {
+      WantedBy = [ "default.target" ];
+    };
+  };
 }

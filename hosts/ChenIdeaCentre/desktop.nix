@@ -1,8 +1,26 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
+
+let
+  baseXwayland = pkgs.xwayland.override {
+    defaultFontPath = lib.optionalString config.fonts.fontDir.enable "/run/current-system/sw/share/X11/fonts";
+  };
+
+  xwaylandWithMoreClients = pkgs.symlinkJoin {
+    name = "xwayland-maxclients";
+    paths = [ baseXwayland ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      rm $out/bin/Xwayland
+      makeWrapper ${baseXwayland}/bin/Xwayland $out/bin/Xwayland \
+        --add-flags "-maxclients 512"
+    '';
+  };
+in
 
 {
   # ── KDE Plasma 6 (Wayland) 桌面环境 ─────────────────────────────────
   services.desktopManager.plasma6.enable = true;
+  programs.xwayland.package = xwaylandWithMoreClients;
 
   services.displayManager = {
     sddm = {
@@ -101,7 +119,9 @@
 
   # ── KDE 额外应用 ──────────────────────────────────────────────
   environment.systemPackages = with pkgs; [
+    kdePackages.sddm-kcm
     kdePackages.yakuake
+    kdePackages.wallpaper-engine-plugin
   ];
 
   environment.sessionVariables = {
