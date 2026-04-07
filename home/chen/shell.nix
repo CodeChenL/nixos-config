@@ -6,6 +6,7 @@
     historyControl = [ "ignoredups" ];
 
     shellAliases = {
+      copilot = "${config.home.profileDirectory}/bin/copilot";
       prock = "reset && picocom -q -b 1500000 /dev/ttyUSB0";
       paml = "reset && picocom -q -b 115200 /dev/ttyUSB0";
     };
@@ -19,58 +20,73 @@
     bashrcExtra = ''
       export PS1="[\u@\h \A]\n[\$? \w]\$ "
 
-      fxz() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
+      _flash_require_path() {
+        if [ ! -e "$1" ]; then
+          echo "$1 not found"
           return 1
         fi
+      }
+
+      fxz() {
+        _flash_require_path "$1" || return 1
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "xzcat \"$1\" | dd of=\"$2\" bs=52M status=progress oflag=direct iflag=fullblock && sync"
+        (
+          set -o pipefail
+          ${pkgs.xz}/bin/xzcat "$1" \
+            | sudo ${pkgs.coreutils}/bin/dd of="$2" bs=52M status=progress oflag=direct iflag=fullblock
+        ) && sudo ${pkgs.coreutils}/bin/sync
       }
 
       fgz() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
-          return 1
-        fi
+        _flash_require_path "$1" || return 1
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "zcat \"$1\" | dd of=\"$2\" bs=52M status=progress oflag=direct iflag=fullblock && sync"
+        (
+          set -o pipefail
+          ${pkgs.gzip}/bin/zcat "$1" \
+            | sudo ${pkgs.coreutils}/bin/dd of="$2" bs=52M status=progress oflag=direct iflag=fullblock
+        ) && sudo ${pkgs.coreutils}/bin/sync
       }
 
       fimg() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
-          return 1
-        fi
+        _flash_require_path "$1" || return 1
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "dd if=\"$1\" of=\"$2\" bs=52M status=progress oflag=direct iflag=fullblock && sync"
+        sudo ${pkgs.coreutils}/bin/dd if="$1" of="$2" bs=52M status=progress oflag=direct iflag=fullblock \
+          && sudo ${pkgs.coreutils}/bin/sync
       }
 
       fxzu() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
-          return 1
-        fi
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "curl -L $1 | xzcat | dd of=$2 bs=5M status=progress oflag=direct iflag=fullblock && sync"
+        (
+          set -o pipefail
+          ${pkgs.curl}/bin/curl -L --fail "$1" \
+            | ${pkgs.xz}/bin/xzcat \
+            | sudo ${pkgs.coreutils}/bin/dd of="$2" bs=5M status=progress oflag=direct iflag=fullblock
+        ) && sudo ${pkgs.coreutils}/bin/sync
       }
 
       fgzu() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
-          return 1
-        fi
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "curl -L $1 | zcat | dd of=\"$2\" bs=5M status=progress oflag=direct iflag=fullblock && sync"
+        (
+          set -o pipefail
+          ${pkgs.curl}/bin/curl -L --fail "$1" \
+            | ${pkgs.gzip}/bin/zcat \
+            | sudo ${pkgs.coreutils}/bin/dd of="$2" bs=5M status=progress oflag=direct iflag=fullblock
+        ) && sudo ${pkgs.coreutils}/bin/sync
       }
 
       fimgu() {
-        if [ -d "$2" ]; then
-          echo "$2 not found"
-          return 1
-        fi
+        _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
-        sudo sh -c "curl -L $1 | dd of=$2 bs=5M status=progress oflag=direct iflag=fullblock && sync"
+        (
+          set -o pipefail
+          ${pkgs.curl}/bin/curl -L --fail "$1" \
+            | sudo ${pkgs.coreutils}/bin/dd of="$2" bs=5M status=progress oflag=direct iflag=fullblock
+        ) && sudo ${pkgs.coreutils}/bin/sync
       }
     '';
   };
