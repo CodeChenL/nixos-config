@@ -10,9 +10,11 @@
 
   home.username = "chen";
   home.homeDirectory = "/home/chen";
-  home.stateVersion = "24.11";
+  home.stateVersion = "25.11";
 
   programs.home-manager.enable = true;
+
+  programs.gpg.enable = true;
 
   home.sessionVariables = {
     EDITOR = "vim";

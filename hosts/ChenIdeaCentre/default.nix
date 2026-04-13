@@ -17,7 +17,6 @@
 
   # ── 用户账户（桌面专用扩展）──────────────────────────────────────
   users.users.chen = {
-    linger = true;
     extraGroups = [
       "docker"
       "libvirtd"
@@ -46,6 +45,7 @@
   environment.systemPackages = with pkgs; [
     inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
     rkdeveloptool
+    pyamlboot
   ];
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────

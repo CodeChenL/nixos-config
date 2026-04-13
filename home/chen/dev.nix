@@ -10,19 +10,29 @@
     cmake
     meson
     gnumake
+    gnutls
     scons
     ccache
     ninja
     pkg-config
+    bison
+    flex
     gperf
     help2man
     asciidoc
     ctags
 
-    # ── C/C++ ───────────────────────────────────────────────────
+    # ── C/C++ / U-Boot / Linux 内核构建 ─────────────────────────
     gcc
     gdb
     clang-tools  # clangd, clang-format 等，不与 gcc 冲突
+    perl
+    ncurses
+    ncurses.dev
+    elfutils
+    elfutils.dev
+    openssl
+    openssl.dev
 
     # ── Python ──────────────────────────────────────────────────
     (python3.withPackages (ps: with ps; [
@@ -33,6 +43,7 @@
       websockets
       rich
       pip
+      cryptography
     ]))
     python3Packages.pipx
     uv
@@ -56,8 +67,8 @@
     rustup
 
     # ── 交叉编译工具链 ──────────────────────────────────────────
-    # 全局安装会与系统 gcc/gdb 的 man/info 冲突
-    # 按需使用: nix shell nixpkgs#pkgsCross.aarch64-multiplatform.buildPackages.gcc
+    # 低优先级安装以避免与本机 gcc 的 man/info 文件冲突
+    (lib.lowPrio pkgsCross.aarch64-multiplatform.buildPackages.gcc)
     #          nix shell nixpkgs#gcc-arm-embedded
 
     # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────

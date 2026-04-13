@@ -52,7 +52,16 @@ in
   security.rtkit.enable = true;
 
   # ── 蓝牙 ───────────────────────────────────────────────────────
-  hardware.bluetooth.enable = true;
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
+    settings = {
+      General = {
+        Experimental = true;
+        KernelExperimental = true;
+      };
+    };
+  };
 
   # ── Fcitx5 中文输入法 ─────────────────────────────────────────
   i18n.inputMethod = {

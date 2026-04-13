@@ -48,7 +48,7 @@ in
     feishu
     telegram-desktop
     qq                         # linuxqq
-    wechat-uos                 # 微信
+    unstable.wechat                 # 微信
     element-desktop
     thunderbird
 
@@ -63,6 +63,9 @@ in
     haruna
     mediainfo
     ffmpeg-full
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-bad
 
     # ── 游戏 ──────────────────────────────────────────────────
     # Steam 在系统级配置 (programs.steam)

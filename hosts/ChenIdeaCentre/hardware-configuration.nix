@@ -17,13 +17,14 @@
   boot.extraModulePackages = [ ];
 
   # ── 文件系统 ───────────────────────────────────────────────────
-  # / — SSD btrfs @nixos 子卷（NixOS 根分区）
+  # / — NVMe 上的 btrfs 顶层（迁移后的 NixOS 根分区）
+  # 这样会直接复用 nvme0n1p2 现有顶层目录，/opt/work 会随根文件系统一起保留。
   fileSystems."/" = {
-    device = "/dev/disk/by-uuid/a1b1655f-b54c-4931-9290-45a40d5b0b31";
+    device = "/dev/disk/by-uuid/3e0e480a-17b6-40e0-ae94-f7004db9f92c";
     fsType = "btrfs";
     options = [
       "relatime" "ssd" "discard=async"
-      "space_cache=v2" "subvol=/@nixos"
+      "space_cache=v2" "subvol=/"
     ];
   };
 
