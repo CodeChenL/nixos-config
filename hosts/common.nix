@@ -1,4 +1,8 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
+
+let
+  githubTokenSource = "/home/chen/nixos-config/secrets/ghp_token";
+in
 
 {
   # ── 时区 ────────────────────────────────────────────────────────
@@ -40,6 +44,9 @@
 
   # ── Nix 设置 ─────────────────────────────────────────────────────
   nix = {
+    extraOptions = ''
+      !include /etc/nix/access-tokens.conf
+    '';
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
       auto-optimise-store = true;
@@ -63,6 +70,19 @@
     };
   };
 
+
+  system.activationScripts.nixAccessTokens = lib.stringAfter [ "etc" ] ''
+    token_source=${lib.escapeShellArg githubTokenSource}
+    token_target=/etc/nix/access-tokens.conf
+
+    if [ -s "$token_source" ]; then
+      install -d -m 075 /etc/nix
+      printf 'access-tokens = github.com=%s\n' "$(tr -d '\r\n' < "$token_source")" > "$token_target"
+      chmod 600 "$token_target"
+    else
+      rm -f "$token_target"
+    fi
+  '';
   # ── 系统状态版本 ────────────────────────────────────────────────
   system.stateVersion = "25.11";
 }
