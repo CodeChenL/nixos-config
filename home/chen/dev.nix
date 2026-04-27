@@ -1,9 +1,48 @@
 { config, pkgs, lib, ... }:
 
+let
+  vscodeRuntimeLibPath = pkgs.lib.makeLibraryPath [
+    pkgs.stdenv.cc.cc.lib
+  ];
+
+  wrapVSCode = package: binaryName:
+    pkgs.symlinkJoin {
+      name = "${package.pname or package.name}-with-runtime-libs";
+      paths = [ package ];
+      nativeBuildInputs = [ pkgs.makeWrapper ];
+      postBuild = ''
+        rm -f $out/bin/${binaryName}
+        makeWrapper ${lib.getExe' package binaryName} $out/bin/${binaryName} \
+          --prefix LD_LIBRARY_PATH : ${vscodeRuntimeLibPath}
+      '';
+      meta = package.meta // {
+        mainProgram = binaryName;
+      };
+    };
+
+  guiRuntimeLibPath = pkgs.lib.makeLibraryPath [
+    pkgs.stdenv.cc.cc.lib
+    pkgs.libGL
+    pkgs.wayland
+    pkgs.libGLU
+    pkgs.libxkbcommon
+    pkgs.mesa
+    pkgs.vulkan-loader
+    pkgs.xorg.libX11
+    pkgs.xorg.libXcursor
+    pkgs.xorg.libXi
+    pkgs.xorg.libXrandr
+    pkgs.dbus.dev
+  ];
+  dotnetDnx = pkgs.writeShellScriptBin "dnx" ''
+    exec ${lib.getExe' pkgs.dotnet-sdk_10 "dotnet"} dnx "$@"
+  '';
+in
+
 {
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
-    unstable.vscode   # 使用 unstable 最新版 VS Code
+    (wrapVSCode unstable.vscode "code")   # 使用 unstable 最新版 VS Code
     vim
 
     # ── 构建系统 ───────────────────────────────────────────────
@@ -31,6 +70,8 @@
     ncurses.dev
     elfutils
     elfutils.dev
+    libxkbcommon
+    libxkbcommon.dev
     openssl
     openssl.dev
 
@@ -45,6 +86,7 @@
       pip
       cryptography
     ]))
+    (lib.lowPrio python2)
     python3Packages.pipx
     uv
 
@@ -55,6 +97,7 @@
 
     # ── .NET ────────────────────────────────────────────────────
     dotnet-sdk
+    dotnetDnx
 
     # ── Go ──────────────────────────────────────────────────────
     go
@@ -105,11 +148,17 @@
 
     # ── 文档 ───────────────────────────────────────────────────
     mkdocs
+
+    # ─ 其他开发工具 ─────────────────
+    pulseview
   ];
 
   # ── direnv 集成 ──────────────────────────────────────────────────
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;
+  };
+  home.sessionVariables = {
+    LD_LIBRARY_PATH = "${guiRuntimeLibPath}:$LD_LIBRARY_PATH";
   };
 }
