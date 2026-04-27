@@ -56,6 +56,7 @@
             nixpkgs.config.permittedInsecurePackages = [
               # NUR 钉钉当前仍依赖 OpenSSL 1.1
               "openssl-1.1.1w"
+              "python-2.7.18.12"
               "ventoy-1.1.10"
             ];
             nixpkgs.overlays = [ commonOverlay ];
