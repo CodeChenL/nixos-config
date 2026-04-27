@@ -1,0 +1,63 @@
+{
+  "description": "打开记事本并输入Hello World",
+  "events": [
+    [
+      "keyboard",
+      "MetaLeft",
+      true
+    ],
+    [
+      "keyboard",
+      "KeyR",
+      true
+    ],
+    [
+      "delay",
+      50
+    ],
+    [
+      "keyboard",
+      "KeyR",
+      false
+    ],
+    [
+      "keyboard",
+      "MetaLeft",
+      false
+    ],
+    [
+      "delay",
+      500
+    ],
+    [
+      "text",
+      "notepad"
+    ],
+    [
+      "delay",
+      300
+    ],
+    [
+      "keyboard",
+      "Enter",
+      true
+    ],
+    [
+      "keyboard",
+      "Enter",
+      false
+    ],
+    [
+      "delay",
+      1000
+    ],
+    [
+      "text",
+      "Hello World!"
+    ],
+    [
+      "delay",
+      500
+    ]
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "description": "长文本输入演示（超过30字符需分段，每段后暂停1000ms）",
+  "events": [
+    [
+      "keyboard",
+      "MetaLeft",
+      true
+    ],
+    [
+      "keyboard",
+      "KeyR",
+      true
+    ],
+    [
+      "delay",
+      50
+    ],
+    [
+      "keyboard",
+      "KeyR",
+      false
+    ],
+    [
+      "keyboard",
+      "MetaLeft",
+      false
+    ],
+    [
+      "delay",
+      500
+    ],
+    [
+      "text",
+      "notepad"
+    ],
+    [
+      "delay",
+      300
+    ],
+    [
+      "keyboard",
+      "Enter",
+      true
+    ],
+    [
+      "keyboard",
+      "Enter",
+      false
+    ],
+    [
+      "delay",
+      1000
+    ],
+    [
+      "text",
+      "This is a long text demonstration"
+    ],
+    [
+      "delay",
+      1000
+    ],
+    [
+      "text",
+      " showing how to split text into"
+    ],
+    [
+      "delay",
+      1000
+    ],
+    [
+      "text",
+      " multiple chunks with delays."
+    ],
+    [
+      "delay",
+      1000
+    ]
+  ]
+}
