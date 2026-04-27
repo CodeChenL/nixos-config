@@ -13,7 +13,19 @@
   # ── 打印 (CUPS) ─────────────────────────────────────────────────
   services.printing = {
     enable = true;
-    drivers = [ pkgs.cups-filters ];
+    drivers = with pkgs; [
+      cups-filters
+      cups-browsed
+      gutenprint
+      hplipWithPlugin
+      epson-escpr
+    ];
+  };
+
+  services.avahi = {
+    enable = true;
+    nssmdns4 = true;
+    openFirewall = true;
   };
 
   # ── USB/IP ──────────────────────────────────────────────────────
