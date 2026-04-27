@@ -19,6 +19,12 @@
   home.sessionVariables = {
     EDITOR = "vim";
     LANGUAGE = "en_US";
+    PKG_CONFIG_PATH = "${config.home.profileDirectory}/lib/pkgconfig:${config.home.profileDirectory}/share/pkgconfig";
+  };
+
+  home.file.".claude/skills" = {
+    source = ../../skills;
+    recursive = true;
   };
 
   xdg.enable = true;
