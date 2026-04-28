@@ -40,10 +40,87 @@ let
 in
 
 {
+  # ── OpenCode 声明式配置 ───────────────────────────────────────
+  # opencode.json: 模型、插件、行为配置（不含密钥，密钥由 auth.json 管理）
+  xdg.configFile."opencode/opencode.json" = {
+    force = true;
+    text = builtins.toJSON {
+      "$schema" = "https://opencode.ai/config.json";
+      model = "deepseek/deepseek-v4-pro";
+      plugin = [ "oh-my-opencode" ];
+      autoupdate = false;
+      provider = {
+        "vamrs" = {
+          npm = "@ai-sdk/openai-compatible";
+          name = "Vamrs";
+          options.baseURL = "http://192.168.2.131:8080/v1";
+          models = {
+            "gpt-5.4" = {
+              name = "GPT-5.4";
+            };
+            "gpt-5.2" = {
+              name = "GPT-5.2";
+            };
+            "gpt-5.2-pro" = {
+              name = "GPT-5.2 Pro";
+            };
+            "gpt-5.3-codex" = {
+              name = "GPT-5.3 Codex";
+            };
+            "gpt-5.5" = {
+              name = "GPT-5.5";
+            };
+            "gpt-5.4-mini" = {
+              name = "GPT-5.4 Mini";
+            };
+          };
+        };
+      };
+    };
+  };
+
+  # auth.json: /connect 供应商密钥，从 secrets 文件读取，避免密钥进 nix store
+  home.activation.createOpencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    AUTH="$HOME/.local/share/opencode/auth.json"
+    SECRETS="$HOME/nixos-config/secrets/opencode"
+    if [ -f "$SECRETS/deepseek.key" ] \
+      && [ -f "$SECRETS/opencode-go.key" ] \
+      && [ -f "$SECRETS/xiaomi.key" ] \
+      && [ -f "$SECRETS/minimax.key" ] \
+      && [ -f "$SECRETS/nvidia.key" ] \
+      && [ -f "$SECRETS/vamrs.key" ]; then
+      mkdir -p "$(dirname "$AUTH")"
+      chmod 700 "$(dirname "$AUTH")"
+      DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
+      OCK=$(cat "$SECRETS/opencode-go.key" | tr -d '\n')
+      XMK=$(cat "$SECRETS/xiaomi.key" | tr -d '\n')
+      MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
+      NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
+      VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
+      AUTH_TMP="$AUTH.tmp"
+      (
+        umask 077
+        cat > "$AUTH_TMP" << EOF
+{
+  "opencode-go": {"type": "api", "key": "$OCK"},
+  "deepseek": {"type": "api", "key": "$DSK"},
+  "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
+  "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
+  "nvidia": {"type": "api", "key": "$NVK"},
+  "vamrs": {"type": "api", "key": "$VMK"}
+}
+EOF
+      )
+      mv "$AUTH_TMP" "$AUTH"
+      chmod 600 "$AUTH"
+    fi
+  '';
+
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
     (wrapVSCode unstable.vscode "code")   # 使用 unstable 最新版 VS Code
     vim
+    opencode-desktop
 
     # ── 构建系统 ───────────────────────────────────────────────
     cmake
