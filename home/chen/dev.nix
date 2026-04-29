@@ -47,7 +47,7 @@ in
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
       model = "deepseek/deepseek-v4-pro";
-      plugin = [ "oh-my-opencode" ];
+      plugin = [ "oh-my-openagent" ];
       autoupdate = false;
       provider = {
         "vamrs" = {
