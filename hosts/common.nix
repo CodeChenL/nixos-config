@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ pkgs, lib, ... }:
 
 let
   githubTokenSource = "/home/chen/nixos-config/secrets/ghp_token";
@@ -40,7 +40,10 @@ in
     enable = true;
     enableBashIntegration = true;
   };
-  programs.nix-ld.enable = true;
+  programs.nix-ld = {
+    enable = true;
+    libraries = pkgs.ngrLibraries;
+  };
 
   # ── Nix 设置 ─────────────────────────────────────────────────────
   nix = {

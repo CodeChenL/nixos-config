@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ pkgs, lib, ... }:
 
 let
   vscodeRuntimeLibPath = pkgs.lib.makeLibraryPath [
@@ -20,20 +20,6 @@ let
       };
     };
 
-  guiRuntimeLibPath = pkgs.lib.makeLibraryPath [
-    pkgs.stdenv.cc.cc.lib
-    pkgs.libGL
-    pkgs.wayland
-    pkgs.libGLU
-    pkgs.libxkbcommon
-    pkgs.mesa
-    pkgs.vulkan-loader
-    pkgs.xorg.libX11
-    pkgs.xorg.libXcursor
-    pkgs.xorg.libXi
-    pkgs.xorg.libXrandr
-    pkgs.dbus.dev
-  ];
   dotnetDnx = pkgs.writeShellScriptBin "dnx" ''
     exec ${lib.getExe' pkgs.dotnet-sdk_10 "dotnet"} dnx "$@"
   '';
@@ -50,77 +36,125 @@ in
       plugin = [ "oh-my-openagent" ];
       autoupdate = false;
       provider = {
-        "vamrs" = {
-          npm = "@ai-sdk/openai-compatible";
-          name = "Vamrs";
+        "openai" = {
+          npm = "@ai-sdk/openai";
+          name = "openai";
           options.baseURL = "http://192.168.2.131:8080/v1";
-          models = {
-            "gpt-5.4" = {
-              name = "GPT-5.4";
-            };
-            "gpt-5.2" = {
-              name = "GPT-5.2";
-            };
-            "gpt-5.2-pro" = {
-              name = "GPT-5.2 Pro";
-            };
-            "gpt-5.3-codex" = {
-              name = "GPT-5.3 Codex";
-            };
-            "gpt-5.5" = {
-              name = "GPT-5.5";
-            };
-            "gpt-5.4-mini" = {
-              name = "GPT-5.4 Mini";
-            };
-          };
         };
       };
     };
   };
 
+  xdg.configFile."opencode/AGENTS.md" = {
+    text = ''
+      # Global OpenCode Rules
+
+      面向用户的问答、澄清问题、执行说明和最终答复使用中文。
+
+      用户明确要求其他语言时，才使用用户指定的语言。
+    '';
+  };
+
   # auth.json: /connect 供应商密钥，从 secrets 文件读取，避免密钥进 nix store
   home.activation.createOpencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    AUTH="$HOME/.local/share/opencode/auth.json"
-    SECRETS="$HOME/nixos-config/secrets/opencode"
-    if [ -f "$SECRETS/deepseek.key" ] \
-      && [ -f "$SECRETS/opencode-go.key" ] \
-      && [ -f "$SECRETS/xiaomi.key" ] \
-      && [ -f "$SECRETS/minimax.key" ] \
-      && [ -f "$SECRETS/nvidia.key" ] \
-      && [ -f "$SECRETS/vamrs.key" ]; then
-      mkdir -p "$(dirname "$AUTH")"
-      chmod 700 "$(dirname "$AUTH")"
-      DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
-      OCK=$(cat "$SECRETS/opencode-go.key" | tr -d '\n')
-      XMK=$(cat "$SECRETS/xiaomi.key" | tr -d '\n')
-      MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
-      NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
-      VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
-      AUTH_TMP="$AUTH.tmp"
-      (
-        umask 077
-        cat > "$AUTH_TMP" << EOF
-{
-  "opencode-go": {"type": "api", "key": "$OCK"},
-  "deepseek": {"type": "api", "key": "$DSK"},
-  "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
-  "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
-  "nvidia": {"type": "api", "key": "$NVK"},
-  "vamrs": {"type": "api", "key": "$VMK"}
-}
-EOF
-      )
-      mv "$AUTH_TMP" "$AUTH"
-      chmod 600 "$AUTH"
-    fi
+        AUTH="$HOME/.local/share/opencode/auth.json"
+        SECRETS="$HOME/nixos-config/secrets/opencode"
+        if [ -f "$SECRETS/deepseek.key" ] \
+          && [ -f "$SECRETS/opencode-go.key" ] \
+          && [ -f "$SECRETS/xiaomi.key" ] \
+          && [ -f "$SECRETS/minimax.key" ] \
+          && [ -f "$SECRETS/nvidia.key" ] \
+          && [ -f "$SECRETS/vamrs.key" ]; then
+          mkdir -p "$(dirname "$AUTH")"
+          chmod 700 "$(dirname "$AUTH")"
+          DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
+          OCK=$(cat "$SECRETS/opencode-go.key" | tr -d '\n')
+          XMK=$(cat "$SECRETS/xiaomi.key" | tr -d '\n')
+          MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
+          NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
+          VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
+          AUTH_TMP="$AUTH.tmp"
+          (
+            umask 077
+            cat > "$AUTH_TMP" << EOF
+    {
+      "opencode-go": {"type": "api", "key": "$OCK"},
+      "deepseek": {"type": "api", "key": "$DSK"},
+      "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
+      "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
+      "nvidia": {"type": "api", "key": "$NVK"},
+      "openai": {"type": "api", "key": "$VMK"}
+    }
+    EOF
+          )
+          mv "$AUTH_TMP" "$AUTH"
+          chmod 600 "$AUTH"
+        fi
   '';
 
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
-    (wrapVSCode unstable.vscode "code")   # 使用 unstable 最新版 VS Code
+    (wrapVSCode unstable.vscode "code") # 使用 unstable 最新版 VS Code
     vim
     opencode-desktop
+    ngr # 用 NGR runtime 运行外部 GUI/ELF 二进制
+
+    # ── Language servers ────────────────────────────────────────
+    # 覆盖 opencode + oh-my-openagent 内置支持的 LSP server
+    # Nix / Shell / 构建配置
+    nixd
+    bash-language-server
+    dockerfile-language-server
+    terraform-ls
+
+    # Python
+    pyright
+    basedpyright
+    ruff
+    ty
+
+    # JavaScript / TypeScript / Web
+    typescript-language-server
+    deno
+    vue-language-server
+    vscode-langservers-extracted # vscode-eslint-language-server 等
+    oxlint
+    biome
+    svelte-language-server
+    astro-language-server
+
+    # 数据 / 配置 / 文档
+    yaml-language-server
+    texlab
+    tinymist
+    prisma
+
+    # Go / Rust / Zig / 系统语言
+    gopls
+    rust-analyzer
+    zls
+    sourcekit-lsp
+    (lib.lowPrio dart) # 避免与其他 LSP 包的顶层 LICENSE 文件冲突
+    (julia.withPackages [ "LanguageServer" ])
+
+    # JVM / .NET
+    jdt-language-server
+    kotlin-language-server
+    roslyn-ls
+    csharp-ls
+    fsautocomplete
+
+    # 脚本 / 动态语言
+    lua-language-server
+    rubocop # opencode/oh-my-openagent 的 ruby-lsp ID 使用 rubocop --lsp
+    intelephense
+
+    # 函数式 / 其他语言
+    haskell-language-server
+    ocamlPackages.ocaml-lsp
+    elixir-ls
+    clojure-lsp
+    gleam
 
     # ── 构建系统 ───────────────────────────────────────────────
     cmake
@@ -141,7 +175,7 @@ EOF
     # ── C/C++ / U-Boot / Linux 内核构建 ─────────────────────────
     gcc
     gdb
-    clang-tools  # clangd, clang-format 等，不与 gcc 冲突
+    clang-tools # clangd, clang-format 等，不与 gcc 冲突
     perl
     ncurses
     ncurses.dev
@@ -168,7 +202,7 @@ EOF
     uv
 
     # ── Node.js ─────────────────────────────────────────────────
-    nodejs  # 已自带 npm 和 corepack
+    nodejs # 已自带 npm 和 corepack
     yarn
     nodePackages.prettier
 
@@ -184,7 +218,7 @@ EOF
 
     # ── Rust（通过 rustup 管理）──────────────────────────────
     # 使用 `rustup` 管理 Rust 工具链
-    rustup
+    (lib.lowPrio rustup) # rustup 也带 rust-analyzer shim，避免覆盖显式 LSP
 
     # ── 交叉编译工具链 ──────────────────────────────────────────
     # 低优先级安装以避免与本机 gcc 的 man/info 文件冲突
@@ -192,9 +226,9 @@ EOF
     #          nix shell nixpkgs#gcc-arm-embedded
 
     # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
-    dtc                        # 设备树编译器
-    ubootTools                 # mkimage etc.
-    android-tools              # adb, fastboot
+    dtc # 设备树编译器
+    ubootTools # mkimage etc.
+    android-tools # adb, fastboot
     mtdutils
     binwalk
 
@@ -238,8 +272,5 @@ EOF
   programs.direnv = {
     enable = true;
     nix-direnv.enable = true;
-  };
-  home.sessionVariables = {
-    LD_LIBRARY_PATH = "${guiRuntimeLibPath}:$LD_LIBRARY_PATH";
   };
 }
