@@ -87,16 +87,17 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1775838970,
-        "narHash": "sha256-qPniz1R5WYFcqGrn02XEgEpS4WhiItvD6Mu2mMd7OPU=",
+        "lastModified": 1767609704,
+        "narHash": "sha256-hkb/VOMkwA52qUpknKg0DXh4eiKH4IVd8wCpbBGOapU=",
         "owner": "strongtz",
         "repo": "edl-ng",
-        "rev": "856da6a34975bcf474f5d81d544417c399c32753",
+        "rev": "de101db593b8ee92cb1c6ee8e2c60bd9037d66ed",
         "type": "github"
       },
       "original": {
         "owner": "strongtz",
         "repo": "edl-ng",
+        "rev": "de101db593b8ee92cb1c6ee8e2c60bd9037d66ed",
         "type": "github"
       }
     },

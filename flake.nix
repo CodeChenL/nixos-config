@@ -16,7 +16,7 @@
     NUR.url = "github:nix-community/NUR";
 
     edl-ng = {
-      url = "github:strongtz/edl-ng";
+      url = "github:strongtz/edl-ng/de101db593b8ee92cb1c6ee8e2c60bd9037d66ed";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -81,6 +81,9 @@
 
           {
             nixpkgs.config.allowUnfree = true;
+            nixpkgs.config.permittedInsecurePackages = [
+              "python-2.7.18.12"
+            ];
             nixpkgs.overlays = [ commonOverlay ];
           }
         ];
