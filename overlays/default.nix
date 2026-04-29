@@ -455,6 +455,56 @@ in
     nurpkgs = prev;
   };
 
+  ngrLibraries = final.lib.unique (with final; [
+    # Native GUI/runtime libraries for nix-ld and ad-hoc GUI binaries.
+    stdenv.cc.cc.lib
+
+    # GL / Wayland / Vulkan
+    libGL
+    libGLU
+    libgbm
+    mesa
+    vulkan-loader
+    wayland
+
+    # Electron / Chromium / GTK runtime stack
+    glib
+    nss
+    nspr
+    dbus
+    atk
+    at-spi2-core
+    cups
+    libdrm
+    gtk3
+    pango
+    cairo
+    expat
+    alsa-lib
+    libxkbcommon
+
+    # X11
+    xorg.libX11
+    xorg.libXcomposite
+    xorg.libXcursor
+    xorg.libXdamage
+    xorg.libXext
+    xorg.libXfixes
+    xorg.libXi
+    xorg.libXrandr
+    xorg.libxcb
+  ]);
+
+  ngr = final.writeShellScriptBin "ngr" ''
+    if [ "$#" -eq 0 ]; then
+      echo "usage: ngr <program> [args...]" >&2
+      exit 64
+    fi
+
+    export LD_LIBRARY_PATH="${final.lib.makeLibraryPath final.ngrLibraries}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    exec "$@"
+  '';
+
   inherit
     freedownloadmanager
     trae-cn
