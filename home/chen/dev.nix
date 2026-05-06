@@ -181,6 +181,7 @@ in
     ncurses.dev
     elfutils
     elfutils.dev
+    dbus.dev
     libxkbcommon
     libxkbcommon.dev
     openssl
