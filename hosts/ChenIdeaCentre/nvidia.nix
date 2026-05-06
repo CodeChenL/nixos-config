@@ -6,9 +6,10 @@
 
   hardware.nvidia = {
     open = true;
+    modesetting.enable = true;
     nvidiaSettings = true;
-    # 跟随 boot.kernelPackages (unstable 最新内核) 的 NVIDIA 驱动
-    package = config.boot.kernelPackages.nvidiaPackages.stable;
+    # 跟随 release 内核的 NVIDIA production 驱动
+    package = config.boot.kernelPackages.nvidiaPackages.production;
     # 显示器直连 NVIDIA，无需 PRIME
     # Intel 核显仍可通过 intel-media-driver 提供 VA-API 硬件解码
   };

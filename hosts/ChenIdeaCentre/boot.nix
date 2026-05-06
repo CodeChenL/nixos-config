@@ -1,8 +1,8 @@
 { config, pkgs, ... }:
 
 {
-  # ── 内核 (使用 unstable 最新内核) ─────────────────────────────────
-  boot.kernelPackages = pkgs.unstable.linuxPackages_latest;
+  # ── 内核 (使用 release 默认内核) ─────────────────────────────────
+  boot.kernelPackages = pkgs.linuxPackages;
 
   # ── 引导加载器 (GRUB EFI) ───────────────────────────────────────
   boot.loader = {
