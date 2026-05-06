@@ -32,13 +32,13 @@ in
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      model = "deepseek/deepseek-v4-pro";
-      plugin = [ "oh-my-openagent" ];
+      model = "openai/gpt-5.5";
+      plugin = [ "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" ];
       autoupdate = false;
       provider = {
         "openai" = {
           npm = "@ai-sdk/openai";
-          name = "openai";
+          name = "OpenAI";
           options.baseURL = "http://192.168.2.131:8080/v1";
         };
       };
