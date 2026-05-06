@@ -1,7 +1,7 @@
 { pkgs, lib, ... }:
 
 let
-  githubTokenSource = "/home/chen/nixos-config/secrets/ghp_token";
+  githubTokenSource = "/home/chen/nixos-config/secrets/gh_tk";
 in
 
 {
