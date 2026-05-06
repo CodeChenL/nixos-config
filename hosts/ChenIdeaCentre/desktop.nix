@@ -134,6 +134,10 @@ in
 
   # ── KDE 额外应用 ──────────────────────────────────────────────
   environment.systemPackages = with pkgs; [
+    kmscube
+    libdrm
+    mesa-demos
+    vulkan-tools
     kdePackages.sddm-kcm
     kdePackages.yakuake
     kdePackages.wallpaper-engine-plugin
