@@ -15,6 +15,12 @@ let
         --add-flags "-maxclients 512"
     '';
   };
+
+  kwallet5Compat = pkgs.runCommand "kwallet5-compat" { } ''
+    mkdir -p $out/bin
+    ln -s ${lib.getBin pkgs.libsForQt5.kwallet}/bin/kwalletd5 $out/bin/kwalletd5
+    ln -s ${lib.getBin pkgs.libsForQt5.kwallet}/bin/kwalletd5 $out/bin/kwalletd
+  '';
 in
 
 {
@@ -131,6 +137,7 @@ in
     kdePackages.sddm-kcm
     kdePackages.yakuake
     kdePackages.wallpaper-engine-plugin
+    kwallet5Compat
   ];
 
   environment.sessionVariables = {
