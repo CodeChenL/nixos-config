@@ -41,9 +41,11 @@ in
     haruna
     mediainfo
     ffmpeg-full
+    mpv
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-bad
+    gst_all_1.gst-plugins-good
 
     # ── 游戏 ──────────────────────────────────────────────────
     # Steam 在系统级配置 (programs.steam)
@@ -78,7 +80,7 @@ in
     # ── 系统监控（桌面专用）──────────────────────────────────────
     s-tui
     i7z
-    unstable.linuxPackages_latest.cpupower
+    linuxPackages_latest.cpupower
     intel-gpu-tools
 
     # ── 文件工具（桌面专用）──────────────────────────────────────
@@ -112,6 +114,8 @@ in
 
     # ── 其他 CLI（桌面专用）──────────────────────────────────────
     efibootmgr
+    kdotool
+    libnotify
     yq
     jq
     pandoc
