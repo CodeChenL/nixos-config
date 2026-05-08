@@ -64,7 +64,10 @@ in
           && [ -f "$SECRETS/xiaomi.key" ] \
           && [ -f "$SECRETS/minimax.key" ] \
           && [ -f "$SECRETS/nvidia.key" ] \
-          && [ -f "$SECRETS/vamrs.key" ]; then
+          && [ -f "$SECRETS/vamrs.key" ] \
+          && [ -f "$SECRETS/github-copilot.access" ] \
+          && [ -f "$SECRETS/github-copilot.refresh" ] \
+          && [ -f "$SECRETS/github-copilot.expires" ]; then
           mkdir -p "$(dirname "$AUTH")"
           chmod 700 "$(dirname "$AUTH")"
           DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
@@ -73,6 +76,9 @@ in
           MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
           NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
           VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
+          CPA=$(cat "$SECRETS/github-copilot.access" | tr -d '\n')
+          CPR=$(cat "$SECRETS/github-copilot.refresh" | tr -d '\n')
+          CPE=$(cat "$SECRETS/github-copilot.expires" | tr -d '\n')
           AUTH_TMP="$AUTH.tmp"
           (
             umask 077
@@ -83,7 +89,8 @@ in
       "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
       "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
       "nvidia": {"type": "api", "key": "$NVK"},
-      "openai": {"type": "api", "key": "$VMK"}
+      "openai": {"type": "api", "key": "$VMK"},
+      "github-copilot": {"type": "oauth", "access": "$CPA", "refresh": "$CPR", "expires": $CPE}
     }
     EOF
           )
