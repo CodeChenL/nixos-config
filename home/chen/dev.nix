@@ -52,6 +52,12 @@ in
       面向用户的问答、澄清问题、执行说明和最终答复使用中文。
 
       用户明确要求其他语言时，才使用用户指定的语言。
+
+      如果当前仓库是 Debian 打包仓库，涉及 Radxa Linux 内核 Debian 包编译打包时，必须严格使用 radxa-packager skill。
+
+      如果当前仓库是 Debian 打包仓库，涉及将本地构建的 Linux 内核 .deb 包传输到 Radxa 设备并在远端安装与验证时，必须严格使用 radxa-kernel-deployer skill。
+
+      使用 Radxa skills 执行打包或部署时，不需要轮询完成情况；等待对应 skill 工作流运行完成后再继续即可。
     '';
   };
 
