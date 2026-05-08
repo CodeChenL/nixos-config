@@ -55,6 +55,8 @@
     # ── 其他 CLI ────────────────────────────────────────────────
     shellcheck
     yamlfmt
+    b4
+    public-inbox
     debian-devscripts
     dpkg
   ];
