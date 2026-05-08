@@ -58,6 +58,7 @@ in
     dxvk
 
     # ── 3D 打印 / CAD ─────────────────────────────────────────────
+    bambu-studio
     orca-slicer
     freecad
     kicad
