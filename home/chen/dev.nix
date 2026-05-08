@@ -33,7 +33,7 @@ in
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
       model = "openai/gpt-5.5";
-      plugin = [ "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" ];
+      plugin = [ "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
       autoupdate = false;
       provider = {
         "openai" = {
@@ -89,6 +89,27 @@ in
           )
           mv "$AUTH_TMP" "$AUTH"
           chmod 600 "$AUTH"
+        fi
+  '';
+
+  # WakaTime: 从 secrets 文件读取 API key，避免密钥进入 Git 和 nix store。
+  home.activation.createWakaTimeConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        WAKATIME_DIR="''${WAKATIME_HOME:-$HOME}"
+        WAKATIME_CFG="$WAKATIME_DIR/.wakatime.cfg"
+        WAKATIME_KEY_FILE="$HOME/nixos-config/secrets/wakatime.api_key"
+        if [ -f "$WAKATIME_KEY_FILE" ]; then
+          mkdir -p "$WAKATIME_DIR"
+          WAKATIME_KEY=$(tr -d '\n' < "$WAKATIME_KEY_FILE")
+          WAKATIME_CFG_TMP="$WAKATIME_CFG.tmp"
+          (
+            umask 077
+            cat > "$WAKATIME_CFG_TMP" << EOF
+[settings]
+api_key = $WAKATIME_KEY
+EOF
+          )
+          mv "$WAKATIME_CFG_TMP" "$WAKATIME_CFG"
+          chmod 600 "$WAKATIME_CFG"
         fi
   '';
 
@@ -246,6 +267,7 @@ in
     # ── 调试与追踪 ───────────────────────────────────────────────
     strace
     patchelf
+    wakatime-cli
 
     # ── Shell 工具 ───────────────────────────────────────────────
     # shellcheck 已在 packages.nix 中安装
