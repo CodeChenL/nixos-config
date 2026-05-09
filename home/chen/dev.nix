@@ -32,7 +32,7 @@ in
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      model = "openai/gpt-5.5";
+      model = "openai/gpt-5.4";
       plugin = [ "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
       autoupdate = false;
       provider = {
