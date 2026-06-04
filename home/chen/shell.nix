@@ -14,7 +14,7 @@
     profileExtra = ''
       export LANGUAGE=en_US
       export LANG=en_US.UTF-8
-      export PATH="$PATH:$HOME/.local/bin"
+      export PATH="$PATH:$HOME/.cargo/bin:$HOME/.local/bin"
     '';
 
     bashrcExtra = ''

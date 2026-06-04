@@ -105,6 +105,7 @@ in
     # ── 硬件工具 ─────────────────────────────────────────────────
     lshw
     evtest
+    v4l-utils
     picocom
     minicom
 

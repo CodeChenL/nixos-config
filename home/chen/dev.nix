@@ -1,6 +1,9 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, inputs, ... }:
 
 let
+  zephyrPkgs = inputs.zephyr-nix.packages.${pkgs.stdenv.hostPlatform.system};
+  zephyrSdk = zephyrPkgs."sdkFull-1_0";
+
   vscodeRuntimeLibPath = pkgs.lib.makeLibraryPath [
     pkgs.stdenv.cc.cc.lib
   ];
@@ -26,89 +29,6 @@ let
 in
 
 {
-  # ── OpenCode 声明式配置 ───────────────────────────────────────
-  # opencode.json: 模型、插件、行为配置（不含密钥，密钥由 auth.json 管理）
-  xdg.configFile."opencode/opencode.json" = {
-    force = true;
-    text = builtins.toJSON {
-      "$schema" = "https://opencode.ai/config.json";
-      model = "openai/gpt-5.4";
-      plugin = [ "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
-      autoupdate = false;
-      provider = {
-        "openai" = {
-          npm = "@ai-sdk/openai";
-          name = "OpenAI";
-          options.baseURL = "http://192.168.2.131:8080/v1";
-        };
-      };
-    };
-  };
-
-  xdg.configFile."opencode/AGENTS.md" = {
-    text = ''
-      # Global OpenCode Rules
-
-      面向用户的问答、澄清问题、执行说明和最终答复使用中文。
-
-      用户明确要求其他语言时，才使用用户指定的语言。
-
-      执行命令遇到 `command not found` 或缺少工具时，优先使用 `nix-shell -p <package> --run '<command>'` 临时提供所需工具，不要直接要求用户手动安装。
-
-      涉及 Linux 内核源码、驱动、子系统、Kconfig、Device Tree 或内核补丁的问题时，应主动使用 lore-mail 工作流到 lore.kernel.org 邮件列表查找相关补丁、patch series、review 讨论和历史上下文，不要只依赖本地源码或网页搜索。
-
-      如果当前仓库是 Debian 打包仓库，涉及 Radxa Linux 内核 Debian 包编译打包时，必须严格使用 radxa-packager skill。
-
-      如果当前仓库是 Debian 打包仓库，涉及将本地构建的 Linux 内核 .deb 包传输到 Radxa 设备并在远端安装与验证时，必须严格使用 radxa-kernel-deployer skill。
-
-      使用 Radxa skills 执行打包或部署时，不需要轮询完成情况；等待对应 skill 工作流运行完成后再继续即可。
-    '';
-  };
-
-  # auth.json: /connect 供应商密钥，从 secrets 文件读取，避免密钥进 nix store
-  home.activation.createOpencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        AUTH="$HOME/.local/share/opencode/auth.json"
-        SECRETS="$HOME/nixos-config/secrets/opencode"
-        if [ -f "$SECRETS/deepseek.key" ] \
-          && [ -f "$SECRETS/opencode-go.key" ] \
-          && [ -f "$SECRETS/xiaomi.key" ] \
-          && [ -f "$SECRETS/minimax.key" ] \
-          && [ -f "$SECRETS/nvidia.key" ] \
-          && [ -f "$SECRETS/vamrs.key" ] \
-          && [ -f "$SECRETS/github-copilot.access" ] \
-          && [ -f "$SECRETS/github-copilot.refresh" ] \
-          && [ -f "$SECRETS/github-copilot.expires" ]; then
-          mkdir -p "$(dirname "$AUTH")"
-          chmod 700 "$(dirname "$AUTH")"
-          DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
-          OCK=$(cat "$SECRETS/opencode-go.key" | tr -d '\n')
-          XMK=$(cat "$SECRETS/xiaomi.key" | tr -d '\n')
-          MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
-          NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
-          VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
-          CPA=$(cat "$SECRETS/github-copilot.access" | tr -d '\n')
-          CPR=$(cat "$SECRETS/github-copilot.refresh" | tr -d '\n')
-          CPE=$(cat "$SECRETS/github-copilot.expires" | tr -d '\n')
-          AUTH_TMP="$AUTH.tmp"
-          (
-            umask 077
-            cat > "$AUTH_TMP" << EOF
-    {
-      "opencode-go": {"type": "api", "key": "$OCK"},
-      "deepseek": {"type": "api", "key": "$DSK"},
-      "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
-      "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
-      "nvidia": {"type": "api", "key": "$NVK"},
-      "openai": {"type": "api", "key": "$VMK"},
-      "github-copilot": {"type": "oauth", "access": "$CPA", "refresh": "$CPR", "expires": $CPE}
-    }
-    EOF
-          )
-          mv "$AUTH_TMP" "$AUTH"
-          chmod 600 "$AUTH"
-        fi
-  '';
-
   # WakaTime: 从 secrets 文件读取 API key，避免密钥进入 Git 和 nix store。
   home.activation.createWakaTimeConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         WAKATIME_DIR="''${WAKATIME_HOME:-$HOME}"
@@ -129,6 +49,10 @@ EOF
           chmod 600 "$WAKATIME_CFG"
         fi
   '';
+
+  home.sessionVariables = {
+    ZEPHYR_SDK_INSTALL_DIR = "${zephyrSdk}";
+  };
 
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
@@ -226,16 +150,19 @@ EOF
     openssl.dev
 
     # ── Python ──────────────────────────────────────────────────
-    (python3.withPackages (ps: with ps; [
-      numpy
-      pyserial
-      pyusb
-      pyroute2
-      websockets
-      rich
-      pip
-      cryptography
-    ]))
+     (python3.withPackages (ps: with ps; [
+       numpy
+       pyserial
+       pyusb
+       pyroute2
+       websockets
+       rich
+       pip
+       cryptography
+       west
+       jsonschema
+       pyelftools
+      ]))
     (lib.lowPrio python2)
     python3Packages.pipx
     uv
@@ -255,21 +182,23 @@ EOF
     # ── Ruby ────────────────────────────────────────────────────
     ruby
 
-    # ── Rust（通过 rustup 管理）──────────────────────────────
-    # 使用 `rustup` 管理 Rust 工具链
-    (lib.lowPrio rustup) # rustup 也带 rust-analyzer shim，避免覆盖显式 LSP
+    # ── Rust ───────────────────────────────────────────────────
+    (lib.lowPrio rustup)
+    # 由 rustup 管理 Rust toolchain；降优先级以避免覆盖独立安装的 rust-analyzer
 
     # ── 交叉编译工具链 ──────────────────────────────────────────
     # 低优先级安装以避免与本机 gcc 的 man/info 文件冲突
     (lib.lowPrio pkgsCross.aarch64-multiplatform.buildPackages.gcc)
     #          nix shell nixpkgs#gcc-arm-embedded
 
-    # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
-    dtc # 设备树编译器
-    ubootTools # mkimage etc.
+     # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
+     zephyrSdk
+     dtc # 设备树编译器
+     ubootTools # mkimage etc.
     android-tools # adb, fastboot
     mtdutils
     binwalk
+    picotool
 
     # ── 版本控制 / CI ───────────────────────────────────────────
     # git 和 lazygit 已在 packages.nix 中安装

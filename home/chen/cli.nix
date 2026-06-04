@@ -3,6 +3,6 @@
 {
   imports = [
     ./base.nix
-    ./dev.nix
+    ./packages-cli.nix
   ];
 }

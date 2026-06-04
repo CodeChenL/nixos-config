@@ -27,8 +27,10 @@
       core.editor = "code --wait";
 
       pull.rebase = true;
-
-      rebase.autoStash = true;
+      rebase = {
+        autoStash = true;
+        autoSquash = true;
+      };
 
       commit = {
         signoff = true;
