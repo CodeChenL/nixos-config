@@ -228,7 +228,7 @@ let
           (mkScalar "localuse" "1")
           (mkList "address" [ "/*.mcdn.bilivideo.cn/" ])
           (mkScalar "noresolv" "0")
-          (mkList "server" [ "127.0.0.1#7874" ])
+          (mkScalar "resolvfile" "/tmp/resolv.conf.d/resolv.conf.auto")
         ];
       }
       {
