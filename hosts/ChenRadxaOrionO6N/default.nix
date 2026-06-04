@@ -32,6 +32,39 @@
   # aarch64 设备在 nixpkgs 中部分包仍标记为 unsupported
   nixpkgs.config.allowUnsupportedSystem = true;
 
+  # ── 内核：默认使用 linux-cix-main（Linux v7.0 + CIX 补丁）────────
+  # 覆盖 nixos-hardware-radxa 默认的 BSP 内核
+  boot.kernelPackages = lib.mkForce pkgs.linuxPackages-cix-main;
+  # cix-linux-main README 要求的必要内核参数
+  boot.kernelParams = lib.mkForce [
+    "clk_ignore_unused"
+  ];
+  # cix-linux-main 使用上游 panthor 驱动，不需要 BSP 的 cix_vpu_driver
+  boot.extraModulePackages = lib.mkForce [];
+  boot.initrd.availableKernelModules = lib.mkForce [
+    "btrfs"
+    "sd_mod"
+    "scsi_mod"
+    "usb_storage"
+    "uas"
+    "nvme"
+    "xhci_hcd"
+    "xhci_pci"
+  ];
+
+  # ── specialisation：保留 BSP 内核启动项 ─────────────────────────
+  # 开机时在 systemd-boot 菜单选择 "BSP Kernel (6.6)" 即可切回 BSP 内核
+  specialisation.bsp-kernel.configuration = {
+    boot.kernelPackages = lib.mkOverride 40 pkgs.linuxPackages_cix;
+    boot.kernelParams = lib.mkOverride 40 [
+      "acpi=force"
+      "kasan=off"
+    ];
+    boot.extraModulePackages = lib.mkOverride 40 (with pkgs.linuxPackages_cix; [
+      cix_vpu_driver
+    ]);
+  };
+
   # ── Radxa Cachix 二进制缓存（加速 ARM 构建）────────────────────────
   # 由 Radxa nixos-hardware 模块提供该 option
   hardware.radxa.cachix.enable = true;

@@ -21,8 +21,20 @@
   # ── 平台 ──────────────────────────────────────────────────────────
   nixpkgs.hostPlatform = lib.mkDefault "aarch64-linux";
 
-  # ── initrd 模块（首次部署后由 nixos-generate-config 自动填充）─────
-  boot.initrd.availableKernelModules = [ ];
+  # ── initrd 模块 ───────────────────────────────────────────────────
+  # rootfs 当前在 USB 读卡器上，stage1 需要 USB mass-storage + SCSI disk。
+  # 这些条目遵循 nixos-generate-config 的 generated-style：放在
+  # availableKernelModules 中，由 udev/modalias 按需加载。
+  boot.initrd.availableKernelModules = [
+    "btrfs"
+    "nvme"
+    "scsi_mod"
+    "sd_mod"
+    "uas"
+    "usb_storage"
+    "xhci_hcd"
+    "xhci_pci"
+  ];
   boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ ];
   boot.extraModulePackages = [ ];

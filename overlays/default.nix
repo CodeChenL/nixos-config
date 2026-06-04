@@ -644,6 +644,10 @@ in
     exec "$@"
   '';
 
+  # ── linux-cix-main: Linux v7.0 + CIX Sky1 patches ─────────────────
+  linux-cix-main = final.callPackage ./linux-cix-main { };
+  linuxPackages-cix-main = final.linuxKernel.packagesFor final.linux-cix-main;
+
   inherit
     freedownloadmanager
     trae-cn
