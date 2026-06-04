@@ -101,6 +101,9 @@ let
           patchelf --remove-needed libmimerapi.so "$sql_plugin_dir/libqsqlmimer.so" || echo "Warning: Failed to patch libqsqlmimer.so"
         fi
 
+        rm -f "$sql_plugin_dir/libqsqlite.so"
+        cp "${kdePackages.qtbase}/lib/qt-6/plugins/sqldrivers/libqsqlite.so" "$sql_plugin_dir/libqsqlite.so"
+
         rm -f \
           "$image_plugin_dir/libqtiff.so" \
           "$sql_plugin_dir/libqsqlibase.so" \
@@ -324,6 +327,36 @@ let
     }
   ) { };
 
+  # opencode CLI: 使用 npm 包，避免 glibc 兼容性问题
+  # npm 包使用标准路径 /lib/ld-linux-aarch64.so.1，由 NixOS 自动解析
+  opencode = let
+    unstableOpencode = final.unstable.opencode;
+    version = unstableOpencode.version;
+    # 根据架构选择正确的 npm 包
+    platformPkg = if final.stdenv.hostPlatform.isAarch64
+      then final.fetchurl {
+        url = "https://registry.npmjs.org/opencode-linux-arm64/-/opencode-linux-arm64-${version}.tgz";
+        sha256 = "7dc33d6d062fb369dbef98cf0c48286a58f6e9ba96a808aa537cc674df2686ac";
+      }
+      else final.fetchurl {
+        url = "https://registry.npmjs.org/opencode-linux-x64/-/opencode-linux-x64-${version}.tgz";
+        sha256 = ""; # TODO: 需要为 x86_64 更新
+      };
+  in
+    final.runCommand "opencode-${version}" {
+      nativeBuildInputs = [ final.makeWrapper ];
+      meta = unstableOpencode.meta;
+    } ''
+      mkdir -p $out/bin $out/lib/opencode
+
+      # 解压 npm 包
+      tar xzf ${platformPkg} -C $out/lib/opencode --strip-components=1
+
+      # 创建 wrapper
+      makeWrapper $out/lib/opencode/bin/opencode $out/bin/opencode \
+        --prefix PATH : ${final.lib.makeBinPath [ final.ripgrep ]}
+    '';
+
   opencode-desktop = final.callPackage (
     {
       lib,
@@ -440,6 +473,22 @@ EOF
     })
   ) { };
 
+  radxa-linkr-debuggerctl =
+    inputs.radxa-linkr-debugger.packages.${prev.stdenv.hostPlatform.system}.radxa-linkr-debuggerctl;
+
+  claude-skills = final.runCommand "claude-skills" { } ''
+    mkdir -p "$out"
+    cp -r ${../skills}/. "$out/"
+
+    packaged_skill="${radxa-linkr-debuggerctl}/share/radxa-linkr-debugger/skills/radxa-linkr-debugger"
+    if [ -e "$packaged_skill" ]; then
+      ln -s "$packaged_skill" "$out/radxa-linkr-debugger"
+    else
+      echo "error: packaged radxa-linkr-debugger skill not found at $packaged_skill" >&2
+      exit 1
+    fi
+  '';
+
 in
 {
   unstable = import inputs.nixpkgs-unstable {
@@ -450,10 +499,57 @@ in
     system = prev.stdenv.hostPlatform.system;
     config = { allowUnfree = true; };
   };
-  nur = import inputs.NUR {
-    pkgs = prev;
-    nurpkgs = prev;
-  };
+  nur =
+    let
+      baseNur = import inputs.NUR {
+        pkgs = prev;
+        nurpkgs = prev;
+      };
+      xddxddSrc = final.fetchFromGitHub {
+        owner = "xddxdd";
+        repo = "nur-packages";
+        rev = "9f0cbc66157a3564f336712b93af8eb67d89fc31";
+        hash = "sha256-m6rnRqqEbjZTvqeq8qOD5eCVxmKzFDIyuNaC/4irYBU=";
+      };
+      helperDeps = import (xddxddSrc + "/helpers/group.nix") {
+        pkgs = final;
+        lib = final.lib;
+        mode = null;
+        inputs = null;
+      };
+      fixedDingtalk = (helperDeps.createCallPackage { }) (xddxddSrc + "/pkgs/uncategorized/dingtalk") {
+        inherit (helperDeps) sources;
+        libICE = final.xorg.libICE;
+        libSM = final.xorg.libSM;
+        libX11 = final.xorg.libX11;
+        libxcb = final.xorg.libxcb;
+        libXcomposite = final.xorg.libXcomposite;
+        libXcursor = final.xorg.libXcursor;
+        libXdamage = final.xorg.libXdamage;
+        libXext = final.xorg.libXext;
+        libXfixes = final.xorg.libXfixes;
+        libXi = final.xorg.libXi;
+        libXinerama = final.xorg.libXinerama;
+        libXmu = final.xorg.libXmu;
+        libXrandr = final.xorg.libXrandr;
+        libXrender = final.xorg.libXrender;
+        libXScrnSaver = final.xorg.libXScrnSaver;
+        libXt = final.xorg.libXt;
+        libXtst = final.xorg.libXtst;
+        xcbutilimage = final.xorg.xcbutilimage;
+        xcbutilkeysyms = final.xorg.xcbutilkeysyms;
+        xcbutilrenderutil = final.xorg.xcbutilrenderutil;
+        xcbutilwm = final.xorg.xcbutilwm;
+      };
+    in
+    baseNur
+    // {
+      repos = baseNur.repos // {
+        xddxdd = baseNur.repos.xddxdd // {
+          dingtalk = fixedDingtalk;
+        };
+      };
+    };
 
   ngrLibraries = final.lib.unique (with final; [
     # Native GUI/runtime libraries for nix-ld and ad-hoc GUI binaries.
@@ -510,6 +606,9 @@ in
     trae-cn
     copilot-api
     github-copilot-cli
+    opencode
     opencode-desktop
+    radxa-linkr-debuggerctl
+    claude-skills
     ;
 }

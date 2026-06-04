@@ -1,10 +1,11 @@
-{ config, pkgs, ... }:
+{ pkgs, ... }:
 
 {
   home.packages = with pkgs; [
     # ── AI CLI ──────────────────────────────────────────────────
     github-copilot-cli
-    unstable.opencode
+    radxa-linkr-debuggerctl
+    opencode
     poppler-utils
     qpdf
     mupdf
@@ -16,6 +17,7 @@
     # ── 下载 ───────────────────────────────────────────────────
     aria2
     axel
+    baidupcs-go
 
     # ── 网络工具 ───────────────────────────────────────────────
     nmap
