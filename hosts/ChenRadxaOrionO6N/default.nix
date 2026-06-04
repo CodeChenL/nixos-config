@@ -10,6 +10,7 @@
   imports = [
     # 本地基础配置（时区、用户、基础包、Nix 设置等）
     ../common.nix
+    ../natfrp.nix
 
     # Radxa 官方 nixos-hardware fork：开启 hardware.radxa + cix.sky1
     # 自动配置 systemd-boot + linuxPackages_latest + r8125 网卡驱动
@@ -57,6 +58,12 @@
     dhcpcd
     gh
   ];
+
+  services.natfrp = {
+    enable = true;
+    startAllTunnels = true;
+    remoteManagement.enable = true;
+  };
 
   # ── 系统状态版本 ─────────────────────────────────────────────────
   system.stateVersion = "25.11";
