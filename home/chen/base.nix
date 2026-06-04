@@ -5,6 +5,7 @@
     ./shell.nix
     ./git.nix
     ./ssh.nix
+    ./htop.nix
     ./opencode.nix
   ];
 
