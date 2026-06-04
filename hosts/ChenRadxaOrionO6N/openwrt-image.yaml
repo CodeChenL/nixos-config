@@ -1,0 +1,67 @@
+image:
+  distribution: openwrt
+  release: "24.10.7"
+  architecture: armsr-armv8
+  variant: default
+  description: "OpenWrt 24.10.7 armsr-armv8 custom (O6N)"
+
+source:
+  downloader: openwrt-http
+  url: https://mirrors.ustc.edu.cn/openwrt
+
+targets:
+  incus:
+    vm:
+      size: 0
+
+packages:
+  manager: opkg
+  update: true
+  sets:
+    - packages:
+        - bash
+        - curl
+        - htop
+        - ip-full
+        - ipset
+        - iptables-mod-extra
+        - iptables-mod-tproxy
+        - kmod-inet-diag
+        - kmod-tun
+        - kmod-wireguard
+        - luci
+        - luci-base
+        - luci-compat
+        - luci-i18n-base-zh-cn
+        - luci-proto-wireguard
+        - ruby
+        - ruby-yaml
+        - tcpdump
+        - unzip
+        - wireguard-tools
+        - wget
+      action: install
+
+files:
+  - path: /etc/opkg/distfeeds.conf
+    generator: dump
+    content: |
+      src/gz openwrt_core https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/targets/armsr/armv8/packages
+      src/gz openwrt_base https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/packages/aarch64_generic/base
+      src/gz openwrt_kmods https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/targets/armsr/armv8/kmods/6.6.141-1-2a67cc4ae7b7c1f0c3b665bec0c6f387
+      src/gz openwrt_luci https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/packages/aarch64_generic/luci
+      src/gz openwrt_packages https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/packages/aarch64_generic/packages
+      src/gz openwrt_routing https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/packages/aarch64_generic/routing
+      src/gz openwrt_telephony https://mirrors.ustc.edu.cn/openwrt/releases/24.10.7/packages/aarch64_generic/telephony
+
+actions:
+  - trigger: post-packages
+    action: |
+      #!/bin/sh
+      opkg update || true
+      opkg remove --force-depends dnsmasq 2>/dev/null || true
+      opkg install dnsmasq-full 2>/dev/null || true
+      wget -O /tmp/openclash.ipk "https://gh.ddlc.top/https://github.com/vernesong/OpenClash/releases/download/v0.47.096/luci-app-openclash_0.47.096_all.ipk" 2>/dev/null || true
+      [ -f /tmp/openclash.ipk ] && opkg install /tmp/openclash.ipk 2>/dev/null || true
+      rm -f /tmp/openclash.ipk
+      exit 0

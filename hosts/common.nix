@@ -13,6 +13,7 @@ in
     isNormalUser = true;
     description = "Jiali Chen";
     extraGroups = [ "wheel" ];
+    hashedPassword = "$6$WenrS6DTvNS5Kcq6$uW1rN2GwHQ.AgMeE4ISsidWfWBvRfzFc6XlFumoV8WvvD.S57rxPTKXkGbmF0qFZaQf/V3okI3ndsM7FufsNZ0";
   };
 
   # ── 基础系统软件包 ────────────────────────────────────────────────
@@ -51,9 +52,15 @@ in
       !include /etc/nix/access-tokens.conf
     '';
     settings = {
-      experimental-features = [ "nix-command" "flakes" ];
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
       auto-optimise-store = true;
-      trusted-users = [ "root" "chen" ];
+      trusted-users = [
+        "root"
+        "chen"
+      ];
       substituters = [
         "https://mirrors.ustc.edu.cn/nix-channels/store"
         "https://cache.nixos.org"
@@ -73,15 +80,18 @@ in
     };
   };
 
-
   system.activationScripts.nixAccessTokens = lib.stringAfter [ "etc" ] ''
     token_source=${lib.escapeShellArg githubTokenSource}
     token_target=/etc/nix/access-tokens.conf
+    token_tmp=$(mktemp)
 
     if [ -s "$token_source" ]; then
-      install -d -m 075 /etc/nix
-      printf 'access-tokens = github.com=%s\n' "$(tr -d '\r\n' < "$token_source")" > "$token_target"
-      chmod 600 "$token_target"
+      install -d -m 0755 /etc/nix
+      trap 'rm -f "$token_tmp"' EXIT
+      printf 'access-tokens = github.com=%s\n' "$(tr -d '\r\n' < "$token_source")" > "$token_tmp"
+      install -m 0640 -o root -g wheel "$token_tmp" "$token_target"
+      rm -f "$token_tmp"
+      trap - EXIT
     else
       rm -f "$token_target"
     fi

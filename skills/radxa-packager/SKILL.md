@@ -10,6 +10,7 @@ description: Radxa Linux 内核 Debian 包编译打包工作流。
 | 核心约束 | 编译验证**只能**通过 `make deb`，禁止 minimal validation |
 | 原因 | `debian/patches` 和 `Makefile` 包含必要操作 |
 | 并发控制 | 必须使用 `flock`，同一时间仅允许一个 `make deb` 实例 |
+| 运行方式 | **绝对禁止**以任何后台方式运行此 skill；必须前台同步运行并等待完成 |
 
 ## 调用方式
 
@@ -64,3 +65,4 @@ version=$(dpkg-parsechangelog --show-field Version 2>/dev/null || sed -n '1p' de
 - `CUSTOM_DEBUILD_ENV` 默认 `DEB_BUILD_OPTIONS='parallel=1'`
 - `debuild` 使用 `--no-lintian`，lintian 检查在 lintian-hook 中执行（error/warning 级别）
 - 包签名已禁用（`--no-sign`）
+- **绝对禁止**使用任何后台运行方式调用此 skill，包括 `run_in_background=true`、异步 task 或其他后台执行包装；必须前台运行并等待整个构建流程完成

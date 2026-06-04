@@ -138,6 +138,7 @@ in
     libdrm
     mesa-demos
     vulkan-tools
+    kdePackages.kdeconnect-kde
     kdePackages.sddm-kcm
     kdePackages.yakuake
     kdePackages.wallpaper-engine-plugin

@@ -1,4 +1,5 @@
 # Sensitive data — do not push to public repos
 nm-backup/
 secrets/
+hosts/ChenRadxaOrionO6N/openwrt/etc/
 result

@@ -101,6 +101,9 @@
     # Qualcomm EDL 模式 (9008)
     SUBSYSTEMS=="usb", ATTRS{idVendor}=="05c6", ATTRS{idProduct}=="9008", MODE="0666", GROUP="wheel"
     ACTION=="bind", SUBSYSTEM=="usb", ENV{ID_USB_VENDOR_ID}=="05c6", ENV{ID_USB_MODEL_ID}=="9008", GROUP="wheel"
+
+    # Raspberry Pi rpiboot / RPI2 Boot
+    SUBSYSTEMS=="usb", ATTRS{idVendor}=="0a5c", ATTRS{idProduct}=="2763", MODE="0666", GROUP="wheel"
   '';
 
   # ── sysctl 调优 ────────────────────────────────────────────────

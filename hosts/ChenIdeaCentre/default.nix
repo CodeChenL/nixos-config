@@ -1,4 +1,9 @@
-{ config, pkgs, inputs, ... }:
+{
+  config,
+  pkgs,
+  inputs,
+  ...
+}:
 
 {
   imports = [
@@ -25,11 +30,10 @@
       "video"
       "input"
       "networkmanager"
-      "dialout"  # 串口访问（对应 Arch 上的 uucp 组）
+      "dialout" # 串口访问（对应 Arch 上的 uucp 组）
       "adbusers"
       "adm"
     ];
-    hashedPassword = "$6$WenrS6DTvNS5Kcq6$uW1rN2GwHQ.AgMeE4ISsidWfWBvRfzFc6XlFumoV8WvvD.S57rxPTKXkGbmF0qFZaQf/V3okI3ndsM7FufsNZ0";
   };
 
   # root 密码
@@ -43,6 +47,7 @@
 
   # ── SBC 编程工具（CLI）──────────────────────────────────────────
   environment.systemPackages = with pkgs; [
+    alsa-utils
     inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
     rkdeveloptool
     pyamlboot

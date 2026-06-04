@@ -28,9 +28,9 @@ sudo_remote() {
 wait_for_device() {
   local host="$1" max=5 delay=10
   for i in $(seq 1 $max); do
+    echo "[wait] 等待上线 ${i}/${max}（${delay}s）" >&2; sleep $delay; delay=$((delay + delay / 2))
     sshpass -p "${PASSWORD}" ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "${host}" "echo ok" >/dev/null 2>&1 && \
       { echo "[wait] 设备已恢复（第${i}次）"; return 0; }
-    echo "[wait] 等待上线 ${i}/${max}（${delay}s）" >&2; sleep $delay; delay=$((delay + delay / 2))
   done
   echo "[wait] ${max}次尝试后无响应" >&2; return 1
 }

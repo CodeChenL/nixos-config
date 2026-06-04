@@ -11,6 +11,7 @@ description: 自动化将本地构建的 Linux 内核 `.deb` 包传输到 Radxa 
 | 构建产物位置 | 上层目录 `../`，匹配 `linux-image*<version>*.deb` 和 `linux-headers*<version>*.deb` |
 | 默认凭证 | 用户 `radxa`，密码 `radxa` |
 | 安装的包 | 仅 `linux-image` 和 `linux-headers` 实包 |
+| 运行方式 | **绝对禁止**以任何后台方式运行此 skill；必须前台同步运行并等待部署与验证完成 |
 
 ## 调用方式
 
@@ -63,3 +64,7 @@ description: 自动化将本地构建的 Linux 内核 `.deb` 包传输到 Radxa 
 - 传输/安装/验证的 stdout/stderr 日志
 - 全部成功 exit 0，部分失败 exit 1 并列出失败主机
 - 安装后 `dpkg -l` 和 `uname -r` 结果
+
+## 约束
+
+- **绝对禁止**使用任何后台运行方式调用此 skill，包括 `run_in_background=true`、异步 task 或其他后台执行包装；必须前台运行并等待整个部署、重启与验证流程完成
