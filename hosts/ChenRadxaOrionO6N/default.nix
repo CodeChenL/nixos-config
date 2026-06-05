@@ -25,6 +25,15 @@
     ./openwrt-container.nix
   ];
 
+  # ── 用户账户（服务器外设扩展）──────────────────────────────────────
+  users.users.chen.extraGroups = [
+    "dialout"   # 串口设备（ttyS*, ttyUSB*, ttyACM*）
+    "plugdev"   # 可插拔 USB 设备
+    "video"     # 视频设备（DRM、VPU 编解码）
+    "input"     # 输入设备
+    "audio"     # 音频设备（PipeWire）
+  ];
+
   # ── hostname ───────────────────────────────────────────────────────
   networking.hostName = "ChenRadxaOrionO6N";
 
@@ -51,6 +60,7 @@
   hardware.firmware = with pkgs; [
     linux-firmware  # 包含 panthor GPU 固件（版本 >20250808）
     cix-dsp-firmware  # CIX Sky1 DSP 固件
+    cix-vpu-firmware  # CIX Sky1 VPU 编解码固件（h264/hevc/vp9/av1 等 .fwb）
   ];
 
   # ── 音频：启用 PipeWire 音频服务 ─────────────────────────────────

@@ -644,6 +644,9 @@ in
     exec "$@"
   '';
 
+  # ── applyDebianPatches: 自动应用 debian/patches/ 中的补丁 ──────────
+  applyDebianPatches = import ./apply-debian-patches.nix { inherit (final) lib; };
+
   # ── linux-cix-main: Linux v7.0 + CIX Sky1 patches ─────────────────
   linux-cix-main = final.callPackage ./linux-cix-main { };
   linuxPackages-cix-main = (final.linuxKernel.packagesFor final.linux-cix-main).extend (lfinal: lprev: {
@@ -654,6 +657,12 @@ in
 
   # ── cix-dsp-firmware: CIX Sky1 DSP 固件 ──────────────────────────
   cix-dsp-firmware = final.callPackage ./cix-dsp-firmware { };
+
+  # ── cix-vpu-firmware: CIX Sky1 VPU 编解码固件 ─────────────────────
+  cix-vpu-firmware = final.callPackage ./cix-vpu-firmware { };
+
+  # ── cix-vpu-headers: CIX Sky1 VPU uAPI 头文件 ─────────────────────
+  cix-vpu-headers = final.callPackage ./cix-vpu-headers { };
 
   inherit
     freedownloadmanager

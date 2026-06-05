@@ -5,6 +5,7 @@
   stdenv,
   fetchFromGitHub,
   kernel,
+  applyDebianPatches,
   ...
 }:
 
@@ -18,6 +19,9 @@ stdenv.mkDerivation {
     rev = "cix_mainline_dev";
     hash = "sha256-YyOsuomP+jpAOoRfYySeCmmK/EzL799WQukaaLMmDdA=";
   };
+
+  # 自动应用 debian/patches/series 中的所有补丁
+  postPatch = applyDebianPatches;
 
   # 参考 Radxa 的构建方式
   buildPhase = ''
