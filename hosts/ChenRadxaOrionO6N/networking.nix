@@ -52,7 +52,7 @@ in
     networking.interfaces."${cfg.wanBridge}".useDHCP = false;
 
     networking.interfaces."${cfg.lanBridge}" = {
-      useDHCP = false;
+      useDHCP = true;
       ipv4.addresses = [
         {
           address = cfg.lanHostAddress;

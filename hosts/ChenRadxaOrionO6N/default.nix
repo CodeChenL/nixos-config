@@ -41,16 +41,6 @@
   ];
   # cix-linux-main 使用上游 panthor 驱动，不需要 BSP 的 cix_vpu_driver
   boot.extraModulePackages = lib.mkForce [];
-  boot.initrd.availableKernelModules = lib.mkForce [
-    "btrfs"
-    "sd_mod"
-    "scsi_mod"
-    "usb_storage"
-    "uas"
-    "nvme"
-    "xhci_hcd"
-    "xhci_pci"
-  ];
 
   # ── specialisation：保留 BSP 内核启动项 ─────────────────────────
   # 开机时在 systemd-boot 菜单选择 "BSP Kernel (6.6)" 即可切回 BSP 内核
@@ -95,7 +85,9 @@
   services.natfrp = {
     enable = true;
     startAllTunnels = true;
+    tokenSourceFile = "/home/chen/nixos-config/secrets/natfrp/token";
     remoteManagement.enable = true;
+    remoteManagement.passwordSourceFile = "/home/chen/nixos-config/secrets/natfrp/remote-password";
   };
 
   # ── 系统状态版本 ─────────────────────────────────────────────────

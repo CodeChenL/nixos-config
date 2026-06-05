@@ -10,9 +10,9 @@ let
   containerName = "o6n-openwrt";
   declarativeConfig = import ./openwrt/uci.nix { inherit lib; };
 
-  # 手动构建 OpenWrt 自定义镜像的脚本
-  # 运行: sudo nix run .#o6n-openwrt-build-image
-  # 需要 root 权限（distrobuilder 要求）
+  # distrobuilder 需要 root 权限（chroot/mknod），无法在 Nix 沙盒中运行。
+  # 镜像构建在 systemd 阶段完成（o6n-openwrt-ensure.service，以 root 运行）。
+  # 首次构建可能需数分钟，已构建后幂等跳过，后续 switch 秒级完成。
   buildImageScript = pkgs.writeShellScriptBin "o6n-openwrt-build-image" ''
     set -eu
     TMP=$(mktemp -d)
@@ -25,13 +25,15 @@ let
     echo "Image imported as openwrt-custom"
   '';
 
-  # OpenClash IPK
-  openclashIpk = pkgs.fetchurl {
-    url = "https://gh.ddlc.top/https://github.com/vernesong/OpenClash/releases/download/v0.47.096/luci-app-openclash_0.47.096_all.ipk";
-    hash = "sha256-X8ho5ejzaegvI6Z3tL1U8rNWIv443QsKjWeF114iYck=";
-  };
+  # 镜像配置哈希：当 image.yaml 或 distrobuilder 版本变更时自动触发重建
+  imageConfigHash = builtins.hashString "sha256" (
+    builtins.readFile ./openwrt-image.yaml
+    + "${pkgs.distrobuilder}"
+  );
+  imageStampFile = "${secretDir}/.image-config-hash";
 
-  # OpenClash IPK 从 Nix store 推送安装
+  # dnsmasq-full 替换和 OpenClash 安装已在镜像构建阶段完成（openwrt-image.yaml 的 post-packages）
+  # 不需要 reconcile 阶段再跑一遍
 
   openwrtPluginDir = ./openwrt/plugins;
   openwrtPluginEntries = builtins.readDir openwrtPluginDir;
@@ -138,19 +140,47 @@ let
     name = "o6n-openwrt-ensure";
     runtimeInputs = with pkgs; [
       coreutils
+      distrobuilder
       gnugrep
+      gnused
+      gzip
       incus
+      squashfsTools
+      xz
     ];
     text = ''
       set -eu
+      PATH="$PATH:${pkgs.xz}/bin:${pkgs.gzip}/bin"
 
       install -d -m 0700 ${secretDir}
 
-      # 检查自定义镜像是否存在
+      # 修复空 incus 客户端配置文件（会导致 YAML decoder 错误）
+      incus_cfg=/root/.config/incus/config.yml
+      if [ -f "$incus_cfg" ] && [ ! -s "$incus_cfg" ]; then
+        rm -f "$incus_cfg"
+      fi
+
+      # 检查是否需要重建镜像（配置变更时自动重建）
+      need_rebuild=0
       if ! incus image list --format csv | grep -q "openwrt-custom"; then
-        echo "ERROR: openwrt-custom image not found." >&2
-        echo "Run: sudo nix run .#o6n-openwrt-build-image" >&2
-        exit 1
+        need_rebuild=1
+      elif [ ! -f ${imageStampFile} ] || [ "$(cat ${imageStampFile})" != "${imageConfigHash}" ]; then
+        echo "Image configuration changed, rebuilding..." >&2
+        need_rebuild=1
+      fi
+
+      if [ "$need_rebuild" = 1 ]; then
+        echo "Building openwrt-custom image (this may take several minutes)..." >&2
+        TMP=$(mktemp -d)
+        # shellcheck disable=SC2064
+        trap "rm -rf $TMP" EXIT
+        sed 's/armsr-armv8/aarch64/' ${./openwrt-image.yaml} > "$TMP/o6n-image.yaml"
+        distrobuilder build-incus "$TMP/o6n-image.yaml" "$TMP/image" \
+          --sources-dir "$TMP/sources" --cache-dir "$TMP/cache"
+        incus image delete openwrt-custom 2>/dev/null || true
+        incus image import "$TMP/image/incus.tar.xz" "$TMP/image/rootfs.squashfs" --alias openwrt-custom
+        echo "${imageConfigHash}" > ${imageStampFile}
+        echo "Image imported as openwrt-custom" >&2
       fi
 
       if ! incus info ${containerName} >/dev/null 2>&1; then
@@ -217,27 +247,7 @@ let
         /etc/init.d/network restart || /sbin/reload_config || true
       '
 
-      # ── OpenClash 安装 ─────────────────────────────────────────────
-      # dnsmasq-full 替换 + OpenClash IPK 本地安装
-      if ! incus exec ${containerName} -- opkg list-installed 2>/dev/null | grep -q "dnsmasq-full"; then
-        echo "Replacing dnsmasq with dnsmasq-full..."
-        # 设临时 DNS 避免 remove dnsmasq 后断网
-        incus exec ${containerName} -- sh -c '
-          echo "nameserver 223.5.5.5" > /etc/resolv.conf
-          echo "nameserver 114.114.114.114" >> /etc/resolv.conf
-        '
-        incus exec ${containerName} -- opkg update || true
-        incus exec ${containerName} -- opkg remove dnsmasq 2>&1 || true
-        incus exec ${containerName} -- opkg install dnsmasq-full 2>&1 || true
-      fi
-      if ! incus exec ${containerName} -- opkg list-installed 2>/dev/null | grep -q "luci-app-openclash"; then
-        echo "Installing OpenClash..."
-        incus exec ${containerName} -- opkg update || true
-        incus file push ${openclashIpk} ${containerName}/tmp/openclash.ipk
-        incus exec ${containerName} -- opkg install /tmp/openclash.ipk 2>&1 || true
-        incus exec ${containerName} -- rm -f /tmp/openclash.ipk
-      fi
-    '';
+      '';
   };
 in
 {
@@ -316,6 +326,7 @@ in
       Type = "oneshot";
       ExecStart = "${ensureOpenWrt}/bin/o6n-openwrt-ensure";
       RemainAfterExit = true;
+      TimeoutStartSec = 900;
     };
   };
 

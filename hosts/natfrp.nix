@@ -31,7 +31,7 @@ let
     if [ ${startAllTunnelsEnabled} = true ]; then
       tunnels_json=$(${pkgs.curl}/bin/curl -fsSL \
         -H "Authorization: Bearer $token" \
-        ${lib.escapeShellArg "${cfg.apiBaseUrl}/tunnels"})
+        ${lib.escapeShellArg "${cfg.apiBaseUrl}/tunnels"} 2>/dev/null) || tunnels_json="[]"
       auto_start_tunnels=$(printf '%s' "$tunnels_json" | ${pkgs.jq}/bin/jq -c 'map(.id)')
     fi
 
@@ -108,6 +108,12 @@ in
       description = "Local file path containing the natfrp access token.";
     };
 
+    tokenSourceFile = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Source file path containing the natfrp access token. Will be copied to workDir on activation.";
+    };
+
     apiBaseUrl = lib.mkOption {
       type = lib.types.str;
       default = "https://api.natfrp.com/v4";
@@ -133,6 +139,12 @@ in
       default = "/home/chen/nixos-config/secrets/natfrp/remote-password";
       description = "Local file path containing the plain-text natfrp remote management password.";
     };
+
+    remoteManagement.passwordSourceFile = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Source file path containing the plain-text natfrp remote management password. Will be copied to workDir on activation.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -149,13 +161,36 @@ in
       "d ${cfg.workDir} 0700 ${cfg.user} ${cfg.group} -"
     ];
 
+    # 声明式管理 secrets：系统激活时自动复制源文件到 workDir
+    system.activationScripts.natfrp-secrets = lib.mkIf (cfg.tokenSourceFile != "" || cfg.remoteManagement.passwordSourceFile != "") {
+      text = ''
+        ${lib.optionalString (cfg.tokenSourceFile != "") ''
+          if [ -f "${cfg.tokenSourceFile}" ]; then
+            install -D -m 0600 -o ${cfg.user} -g ${cfg.group} "${cfg.tokenSourceFile}" "${cfg.workDir}/token"
+          fi
+        ''}
+        ${lib.optionalString (cfg.remoteManagement.enable && cfg.remoteManagement.passwordSourceFile != "") ''
+          if [ -f "${cfg.remoteManagement.passwordSourceFile}" ]; then
+            install -D -m 0600 -o ${cfg.user} -g ${cfg.group} "${cfg.remoteManagement.passwordSourceFile}" "${cfg.workDir}/remote-password"
+          fi
+        ''}
+      '';
+      deps = [ "users" ];
+    };
+
     systemd.services.natfrp-prepare = {
       description = "Prepare natfrp declarative config";
       wantedBy = [ "natfrp.service" ];
       before = [ "natfrp.service" ];
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        Environment = [
+          "NATFRP_SERVICE_WD=${cfg.workDir}"
+          "HOME=${cfg.workDir}"
+        ];
       };
       script = ''
         ${generateConfig}

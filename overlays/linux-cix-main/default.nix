@@ -82,8 +82,9 @@ buildLinux {
 
   inherit kernelPatches;
 
-  # 使用 CIX defconfig 作为基础配置
-  defconfig = "cix_defconfig";
+  # 先应用基础 defconfig，再叠加 CIX 专用配置片段
+  # 与 BSP 内核 (defconfig = "defconfig cix.config") 逻辑一致
+  defconfig = "defconfig cix_defconfig";
 
   # 标记忽略配置错误（defconfig 可能有未知选项）
   ignoreConfigErrors = true;

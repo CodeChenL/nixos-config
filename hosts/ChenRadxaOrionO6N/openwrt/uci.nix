@@ -236,7 +236,7 @@ let
         name = "lan";
         entries = [
           (mkScalar "interface" "lan")
-          (mkScalar "start" "100")
+          (mkScalar "start" "101")
           (mkScalar "limit" "150")
           (mkScalar "leasetime" "12h")
           (mkScalar "dhcpv4" "server")
@@ -324,7 +324,11 @@ let
         name = null;
         entries = [
           (mkScalar "name" "lan")
-          (mkList "network" [ "lan" ])
+          (mkList "network" [
+            "lan"
+            "vamrs"
+            "chen"
+          ])
           (mkScalar "input" "ACCEPT")
           (mkScalar "output" "ACCEPT")
           (mkScalar "forward" "ACCEPT")
@@ -343,8 +347,6 @@ let
           (mkList "network" [
             "wan"
             "wan6"
-            "vamrs"
-            "chen"
           ])
         ];
       }
@@ -354,6 +356,14 @@ let
         entries = [
           (mkScalar "src" "lan")
           (mkScalar "dest" "wan")
+        ];
+      }
+      {
+        type = "forwarding";
+        name = "lan_wg";
+        entries = [
+          (mkScalar "src" "lan")
+          (mkScalar "dest" "lan")
         ];
       }
       {

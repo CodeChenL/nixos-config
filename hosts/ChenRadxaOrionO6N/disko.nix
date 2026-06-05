@@ -1,22 +1,22 @@
 # Radxa Orion O6N 声明式分区配置（disko）
 #
 # ⚠️ 部署前必须修改：
-#   1. 把下面 `main.device` 的 nvme-CHANGEME 替换为真实的设备 ID
+#   1. 把下面 `nvme.device` 的 nvme-CHANGEME 替换为真实的设备 ID
 #   2. 查询方法：在安装介质上执行 `ls -l /dev/disk/by-id/`
 #   3. 推荐用 by-id 而不是 by-path，避免 PCIe 端口号变动
 #
 # 分区结构（参考 MakiseKurisu/nixos-config 的 orion-o6 配置）：
 #   /dev/nvme0n1
-#     ├── ESP  (1 GiB, vfat, /boot)
-#     └── root (剩余, btrfs, compress=zstd, subvolumes: @, @nix, @persistent)
+#     ├── disk-nvme-ESP   (1 GiB, vfat, /boot)
+#     └── disk-nvme-root  (剩余, btrfs, compress=zstd, subvolumes: @, @nix, @persistent)
 
 {
   disko.devices = {
     disk = {
-      main = {
+      nvme = {
         type = "disk";
-        # ⚠️ 部署前替换为真实设备 ID
-        device = "/dev/disk/by-id/nvme-CHANGEME_REPLACE_BEFORE_INSTALL";
+        # E2M2 64GB NVMe（当前系统检测到的稳定 by-id）
+        device = "/dev/disk/by-id/nvme-E2M2_64GB_ML8043D0034EA";
         content = {
           type = "gpt";
           partitions = {
