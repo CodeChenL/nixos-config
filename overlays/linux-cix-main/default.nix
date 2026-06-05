@@ -47,29 +47,11 @@ let
   patchedSrc = runCommand "linux-${linuxVersion}-cix-src" { } ''
     cp -r ${linuxSrc} $out
     chmod -R u+w $out
-    cp ${cixPatchesSrc}/config/config-${linuxVersion}.defconfig $out/arch/arm64/configs/cix_defconfig
+    cp ${cixPatchesSrc}/config/config-${linuxVersion}.defconfig $out/arch/arm64/configs/cix.config
 
     # 修补 defconfig：将关键启动驱动从模块改为内建。
     # rootfs 当前在 USB 读卡器上，USB Mass Storage 还需要 SCSI disk(sd_mod)。
-    chmod u+w $out/arch/arm64/configs/cix_defconfig
-
-    set_config() {
-      local key="$1"
-      local value="$2"
-      if grep -q "^CONFIG_$key=" $out/arch/arm64/configs/cix_defconfig; then
-        sed -i "s/^CONFIG_$key=.*/CONFIG_$key=$value/" $out/arch/arm64/configs/cix_defconfig
-      else
-        printf 'CONFIG_%s=%s\n' "$key" "$value" >> $out/arch/arm64/configs/cix_defconfig
-      fi
-    }
-
-    set_config SCSI y
-    set_config BLK_DEV_SD y
-    set_config BLK_DEV_NVME y
-    set_config BTRFS_FS y
-    set_config VFAT_FS y
-    set_config USB_STORAGE y
-    set_config USB_UAS y
+    chmod u+w $out/arch/arm64/configs/cix.config
   '';
 
 in
@@ -84,7 +66,7 @@ buildLinux {
 
   # 先应用基础 defconfig，再叠加 CIX 专用配置片段
   # 与 BSP 内核 (defconfig = "defconfig cix.config") 逻辑一致
-  defconfig = "defconfig cix_defconfig";
+  defconfig = "defconfig cix.config";
 
   # 标记忽略配置错误（defconfig 可能有未知选项）
   ignoreConfigErrors = true;
