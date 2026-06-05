@@ -12,7 +12,6 @@
       autoupdate = false;
       provider = {
         "openai" = {
-          npm = "@ai-sdk/openai";
           name = "OpenAI";
           options.baseURL = "http://192.168.2.131:8080/v1";
         };
