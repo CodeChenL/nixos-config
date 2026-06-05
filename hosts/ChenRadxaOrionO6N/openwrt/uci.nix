@@ -326,8 +326,6 @@ let
           (mkScalar "name" "lan")
           (mkList "network" [
             "lan"
-            "vamrs"
-            "chen"
           ])
           (mkScalar "input" "ACCEPT")
           (mkScalar "output" "ACCEPT")
@@ -339,14 +337,16 @@ let
         name = null;
         entries = [
           (mkScalar "name" "wan")
-          (mkScalar "input" "REJECT")
+          (mkScalar "input" "ACCEPT")
           (mkScalar "output" "ACCEPT")
-          (mkScalar "forward" "REJECT")
+          (mkScalar "forward" "ACCEPT")
           (mkScalar "masq" "1")
           (mkScalar "mtu_fix" "1")
           (mkList "network" [
             "wan"
             "wan6"
+            "vamrs"
+            "chen"
           ])
         ];
       }
