@@ -35,12 +35,34 @@
   # ── 内核：默认使用 linux-cix-main（Linux v7.0 + CIX 补丁）────────
   # 覆盖 nixos-hardware-radxa 默认的 BSP 内核
   boot.kernelPackages = lib.mkForce pkgs.linuxPackages-cix-main;
-  # cix-linux-main README 要求的必要内核参数
-  boot.kernelParams = lib.mkForce [
+  # cix-linux-main README 要求的必要内核参数（补充而非覆盖）
+  boot.kernelParams = [
     "clk_ignore_unused"
+    "console=ttyAMA0,115200n8"
+    "earlycon=pl011,0x040d0000"
   ];
-  # cix-linux-main 使用上游 panthor 驱动，不需要 BSP 的 cix_vpu_driver
-  boot.extraModulePackages = lib.mkForce [];
+  # 添加 VPU 和 NPU DKMS 驱动（外部 DKMS，非 BSP 内置）
+  boot.extraModulePackages = lib.mkForce (with pkgs.linuxPackages-cix-main; [
+    cix-vpu-driver
+    cix-npu-driver
+  ]);
+
+  # ── 固件：添加 CIX DSP 固件 ──────────────────────────────────────
+  hardware.firmware = with pkgs; [
+    linux-firmware  # 包含 panthor GPU 固件（版本 >20250808）
+    cix-dsp-firmware  # CIX Sky1 DSP 固件
+  ];
+
+  # ── 音频：启用 PipeWire 音频服务 ─────────────────────────────────
+  # 支持 Headphone jack，DP Sound 暂不可用（README 标记为 TODO）
+  services.pipewire = {
+    enable = true;
+    alsa.enable = true;
+    alsa.support32Bit = true;
+    pulse.enable = true;
+  };
+  # 禁用 PulseAudio，使用 PipeWire 替代
+  services.pulseaudio.enable = false;
 
   # ── specialisation：保留 BSP 内核启动项 ─────────────────────────
   # 开机时在 systemd-boot 菜单选择 "BSP Kernel (6.6)" 即可切回 BSP 内核
@@ -65,9 +87,16 @@
   systemd.settings.Manager.RuntimeWatchdogSec = "off";
 
   # ── Nix 构建并行度 ───────────────────────────────────────────────
-  # Orion O6N 是 12 核 CPU，参考上游配置 8 cores / 2 max-jobs
-  nix.settings.cores = 8;
-  nix.settings.max-jobs = 2;
+  # Orion O6N 是 12 核 CPU，优化构建利用率：
+  # max-jobs=4 × cores=3 = 12，刚好用满所有核心，避免过度竞争
+  nix.settings = {
+    cores = 12;
+    max-jobs = 2;
+    # 增加下载并行度，加速二进制缓存拉取
+    max-substitution-jobs = 32;
+    # 启用沙箱构建，提高安全性
+    sandbox = true;
+  };
 
   # ── SSH（首次部署后远程管理）─────────────────────────────────────
   services.openssh.enable = true;
