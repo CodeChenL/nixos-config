@@ -646,7 +646,14 @@ in
 
   # ── linux-cix-main: Linux v7.0 + CIX Sky1 patches ─────────────────
   linux-cix-main = final.callPackage ./linux-cix-main { };
-  linuxPackages-cix-main = final.linuxKernel.packagesFor final.linux-cix-main;
+  linuxPackages-cix-main = (final.linuxKernel.packagesFor final.linux-cix-main).extend (lfinal: lprev: {
+    # 将 VPU/NPU DKMS 驱动添加到内核模块包命名空间
+    cix-vpu-driver = final.callPackage ./cix-vpu-driver { kernel = final.linux-cix-main; };
+    cix-npu-driver = final.callPackage ./cix-npu-driver { kernel = final.linux-cix-main; };
+  });
+
+  # ── cix-dsp-firmware: CIX Sky1 DSP 固件 ──────────────────────────
+  cix-dsp-firmware = final.callPackage ./cix-dsp-firmware { };
 
   inherit
     freedownloadmanager
