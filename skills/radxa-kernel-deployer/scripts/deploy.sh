@@ -38,6 +38,10 @@ done
 
 [[ -n "$HOSTS" ]] || { echo "ERROR: --hosts 必填"; exit 1; }
 
+# 将明文密码注入到 SSHPASS 环境变量，供 sshpass -e 读取
+# 这样密码不会出现在 /proc/<pid>/cmdline 中
+export SSHPASS="${PASSWORD}"
+
 # === 步骤 1: 检测版本 ===
 detect_version() {
   if [ -f debian/changelog ]; then
