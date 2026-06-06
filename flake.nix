@@ -65,86 +65,67 @@
     }@inputs:
     let
       commonOverlay = import ./overlays inputs;
+
+      mkHost =
+        {
+          system,
+          hostModulesPath,
+          homeConfig,
+          insecurePackages ? [ ],
+        }:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = { inherit inputs; };
+          modules = [
+            hostModulesPath
+
+            home-manager.nixosModules.home-manager
+            {
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+              home-manager.backupFileExtension = "hm-bak";
+              home-manager.users.chen = homeConfig;
+              home-manager.extraSpecialArgs = { inherit inputs; };
+            }
+
+            {
+              nixpkgs.config.allowUnfree = true;
+              nixpkgs.config.permittedInsecurePackages = insecurePackages;
+              nixpkgs.overlays = [ commonOverlay ];
+            }
+          ];
+        };
     in
     {
-      nixosConfigurations.ChenIdeaCentre = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.ChenIdeaCentre = mkHost {
         system = "x86_64-linux";
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/ChenIdeaCentre
-
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.backupFileExtension = "hm-bak";
-            home-manager.users.chen = import ./home/chen;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-          }
-
-          {
-            nixpkgs.config.allowUnfree = true;
-            nixpkgs.config.permittedInsecurePackages = [
-              # NUR 钉钉当前仍依赖 OpenSSL 1.1
-              "openssl-1.1.1w"
-              "python-2.7.18.12"
-              "ventoy-1.1.10"
-            ];
-            nixpkgs.overlays = [ commonOverlay ];
-          }
+        hostModulesPath = ./hosts/ChenIdeaCentre;
+        homeConfig = import ./home/chen;
+        insecurePackages = [
+          "openssl-1.1.1w"
+          "python-2.7.18.12"
+          "ventoy-1.1.10"
         ];
       };
 
-      nixosConfigurations.ChenWSL = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.ChenWSL = mkHost {
         system = "x86_64-linux";
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/ChenWSL
-
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.backupFileExtension = "hm-bak";
-            home-manager.users.chen = import ./home/chen/wsl.nix;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-          }
-
-          {
-            nixpkgs.config.allowUnfree = true;
-            nixpkgs.config.permittedInsecurePackages = [
-              "python-2.7.18.12"
-            ];
-            nixpkgs.overlays = [ commonOverlay ];
-          }
+        hostModulesPath = ./hosts/ChenWSL;
+        homeConfig = import ./home/chen/wsl.nix;
+        insecurePackages = [
+          "python-2.7.18.12"
         ];
       };
 
       # ── Radxa Orion O6N (CIX Sky1, aarch64) ────────────────────────────
-      nixosConfigurations.ChenRadxaOrionO6N = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.ChenRadxaOrionO6N = mkHost {
         system = "aarch64-linux";
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./hosts/ChenRadxaOrionO6N
-
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.backupFileExtension = "hm-bak";
-            home-manager.users.chen = import ./home/chen/cli.nix;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-          }
-
-          {
-            nixpkgs.config.allowUnfree = true;
-            nixpkgs.config.permittedInsecurePackages = [
-              "openssl-1.1.1w"
-              "python-2.7.18.12"
-              "ventoy-1.1.10"
-            ];
-            nixpkgs.overlays = [ commonOverlay ];
-          }
+        hostModulesPath = ./hosts/ChenRadxaOrionO6N;
+        homeConfig = import ./home/chen/cli.nix;
+        insecurePackages = [
+          "openssl-1.1.1w"
+          "python-2.7.18.12"
+          "ventoy-1.1.10"
         ];
       };
     };
