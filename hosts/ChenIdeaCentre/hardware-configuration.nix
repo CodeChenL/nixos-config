@@ -45,15 +45,6 @@
     ];
   };
 
-  # ── 交换分区 (zram) ─────────────────────────────────────────────
-  swapDevices = [ ];
-
-  zramSwap = {
-    enable = true;
-    algorithm = "zstd";
-    memoryPercent = 100;
-  };
-
   # ── 固件与 CPU 微码 ────────────────────────────────────────────
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
