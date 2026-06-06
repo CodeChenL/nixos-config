@@ -32,9 +32,6 @@ let
   );
   imageStampFile = "${secretDir}/.image-config-hash";
 
-  # dnsmasq-full 替换和 OpenClash 安装已在镜像构建阶段完成（openwrt-image.yaml 的 post-packages）
-  # 不需要 reconcile 阶段再跑一遍
-
   openwrtPluginDir = ./openwrt/plugins;
   openwrtPluginEntries = builtins.readDir openwrtPluginDir;
   openwrtPluginFiles = builtins.mapAttrs (
@@ -136,6 +133,30 @@ let
         target.write_text(rendered, errors="surrogateescape")
         os.chmod(target, 0o600)
   '';
+
+  cleanupScript = pkgs.writeText "o6n-openwrt-cleanup.sh" ''
+    set -eu
+    old=/etc/o6n-managed-config-files
+    new=/tmp/o6n-managed-config-files
+
+    if [ -f "$old" ]; then
+      while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        case "$name" in *[!A-Za-z0-9_.-]*) exit 1 ;; esac
+        if ! grep -qxF "$name" "$new"; then
+          rm -f "/etc/config/$name"
+        fi
+      done < "$old"
+    fi
+  '';
+
+  applyScript = pkgs.writeText "o6n-openwrt-apply.sh" ''
+    set -eu
+    cp /tmp/o6n-managed-config-files /etc/o6n-managed-config-files
+    chmod 0600 /etc/o6n-managed-config-files
+    /etc/init.d/network restart || /sbin/reload_config || true
+  '';
+
   ensureOpenWrt = pkgs.writeShellApplication {
     name = "o6n-openwrt-ensure";
     runtimeInputs = with pkgs; [
@@ -154,13 +175,11 @@ let
 
       install -d -m 0700 ${secretDir}
 
-      # 修复空 incus 客户端配置文件（会导致 YAML decoder 错误）
       incus_cfg=/root/.config/incus/config.yml
       if [ -f "$incus_cfg" ] && [ ! -s "$incus_cfg" ]; then
         rm -f "$incus_cfg"
       fi
 
-      # 检查是否需要重建镜像（配置变更时自动重建）
       need_rebuild=0
       if ! incus image list --format csv | grep -q "openwrt-custom"; then
         need_rebuild=1
@@ -219,35 +238,16 @@ let
       python3 ${renderOpenWrtConfig} ${openwrtConfigDir} "$render_dir" ${secretFile}
 
       ${ensureOpenWrt}/bin/o6n-openwrt-ensure
+      incus file push ${cleanupScript} ${containerName}/tmp/o6n-cleanup.sh
+      incus file push ${applyScript} ${containerName}/tmp/o6n-apply.sh
       incus file push ${managedConfigManifest} ${containerName}/tmp/o6n-managed-config-files
-      # shellcheck disable=SC2016
-      incus exec ${containerName} -- /bin/sh -c '
-        set -eu
-        old=/etc/o6n-managed-config-files
-        new=/tmp/o6n-managed-config-files
 
-        if [ -f "$old" ]; then
-          while IFS= read -r name; do
-            [ -n "$name" ] || continue
-            case "$name" in *[!A-Za-z0-9_.-]*) exit 1 ;; esac
-            if ! grep -qxF "$name" "$new"; then
-              rm -f "/etc/config/$name"
-            fi
-          done < "$old"
-        fi
-      '
+      incus exec ${containerName} -- sh /tmp/o6n-cleanup.sh
 
       ${pushConfigCommands}
 
-      # shellcheck disable=SC2016
-      incus exec ${containerName} -- /bin/sh -c '
-        set -eu
-        cp /tmp/o6n-managed-config-files /etc/o6n-managed-config-files
-        chmod 0600 /etc/o6n-managed-config-files
-        /etc/init.d/network restart || /sbin/reload_config || true
-      '
-
-      '';
+      incus exec ${containerName} -- sh /tmp/o6n-apply.sh
+    '';
   };
 in
 {

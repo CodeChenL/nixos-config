@@ -45,10 +45,16 @@
   # 覆盖 nixos-hardware-radxa 默认的 BSP 内核
   boot.kernelPackages = lib.mkForce pkgs.linuxPackages-cix-main;
   # cix-linux-main README 要求的必要内核参数（补充而非覆盖）
+  # cix-linux-main v7.0 已知 bug (cixtech/cix-linux-main#12):
+  # PSCI cpuidle 深度休眠状态会导致 CPU 硬锁死 (cpuidle_enter_state 无法唤醒，
+  # 引发 RCU stall、hung task、最终系统无响应)。
+  # 临时 workaround: 完全禁用 cpuidle。代价: 空闲功耗升高约 3-5W。
+  # 上游修复后移除本行。
   boot.kernelParams = [
     "clk_ignore_unused"
     "console=ttyAMA0,115200n8"
     "earlycon=pl011,0x040d0000"
+    "cpuidle.off=1"
   ];
   # 添加 VPU 和 NPU DKMS 驱动（外部 DKMS，非 BSP 内置）
   boot.extraModulePackages = lib.mkForce (with pkgs.linuxPackages-cix-main; [
