@@ -6,6 +6,14 @@
     ./packages.nix
   ];
 
+  # 周期性清理 home-manager generations：保留 30 天内的，最旧的自动失效。
+  # 失效的 generation 路径会保留到下一次 `nix-collect-garbage` 才会真正删除 store object。
+  services.home-manager.autoExpire = {
+    enable = true;
+    timestamp = "-30 days";
+    frequency = "daily";
+  };
+
   # Yakuake 开机自启（用户级 XDG autostart）
   xdg.configFile."autostart/org.kde.yakuake.desktop".source =
     "${pkgs.kdePackages.yakuake}/share/applications/org.kde.yakuake.desktop";

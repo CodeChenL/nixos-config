@@ -58,6 +58,10 @@
       }
 
       fxzu() {
+        if [ -z "$1" ]; then
+          echo "usage: fxzu <url> <dest>" >&2
+          return 1
+        fi
         _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
         (
@@ -69,6 +73,10 @@
       }
 
       fgzu() {
+        if [ -z "$1" ]; then
+          echo "usage: fgzu <url> <dest>" >&2
+          return 1
+        fi
         _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
         (
@@ -80,6 +88,10 @@
       }
 
       fimgu() {
+        if [ -z "$1" ]; then
+          echo "usage: fimgu <url> <dest>" >&2
+          return 1
+        fi
         _flash_require_path "$2" || return 1
         echo "Flash $1 to $2"
         (

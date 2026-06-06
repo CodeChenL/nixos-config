@@ -44,25 +44,15 @@
         AUTH="$HOME/.local/share/opencode/auth.json"
         SECRETS="$HOME/nixos-config/secrets/opencode"
         if [ -f "$SECRETS/deepseek.key" ] \
-          && [ -f "$SECRETS/opencode-go.key" ] \
           && [ -f "$SECRETS/xiaomi.key" ] \
           && [ -f "$SECRETS/minimax.key" ] \
-          && [ -f "$SECRETS/nvidia.key" ] \
-          && [ -f "$SECRETS/vamrs.key" ] \
-          && [ -f "$SECRETS/github-copilot.access" ] \
-          && [ -f "$SECRETS/github-copilot.refresh" ] \
-          && [ -f "$SECRETS/github-copilot.expires" ]; then
+          && [ -f "$SECRETS/vamrs.key" ]; then
           mkdir -p "$(dirname "$AUTH")"
           chmod 700 "$(dirname "$AUTH")"
-          DSK=$(cat "$SECRETS/deepseek.key" | tr -d '\n')
-          OCK=$(cat "$SECRETS/opencode-go.key" | tr -d '\n')
-          XMK=$(cat "$SECRETS/xiaomi.key" | tr -d '\n')
-          MMK=$(cat "$SECRETS/minimax.key" | tr -d '\n')
-          NVK=$(cat "$SECRETS/nvidia.key" | tr -d '\n')
-          VMK=$(cat "$SECRETS/vamrs.key" | tr -d '\n')
-          CPA=$(cat "$SECRETS/github-copilot.access" | tr -d '\n')
-          CPR=$(cat "$SECRETS/github-copilot.refresh" | tr -d '\n')
-          CPE=$(cat "$SECRETS/github-copilot.expires" | tr -d '\n')
+          DSK=$(tr -d '\n' < "$SECRETS/deepseek.key")
+          XMK=$(tr -d '\n' < "$SECRETS/xiaomi.key")
+          MMK=$(tr -d '\n' < "$SECRETS/minimax.key")
+          VMK=$(tr -d '\n' < "$SECRETS/vamrs.key")
           AUTH_TMP="$AUTH.tmp"
           (
             umask 077
