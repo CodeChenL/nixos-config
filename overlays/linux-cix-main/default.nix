@@ -1,7 +1,9 @@
-# linux-cix-main: Linux v7.0 + CIX patches from cixtech/cix-linux-main
+# linux-cix-main: Linux 7.0.11 (stable) + CIX patches from cixtech/cix-linux-main
 # https://github.com/cixtech/cix-linux-main
 {
   lib,
+  stdenv,
+  fetchurl,
   fetchFromGitHub,
   buildLinux,
   runCommand,
@@ -9,14 +11,15 @@
 }@args:
 
 let
-  # ── upstream Linux v7.0 ───────────────────────────────────────────
-  linuxVersion = "7.0";
-  linuxSrc = fetchFromGitHub {
-    owner = "torvalds";
-    repo = "linux";
-    rev = "v${linuxVersion}";
-    hash = "sha256-7TjYHhJdD67P3lquusrjjVtUIUzhLPtA5Oy7tc82gYA=";
+  # ── upstream Linux 7.0.11 (stable) ──────────────────────────────────
+  linuxVersion = "7.0.11";
+  linuxTarball = fetchurl {
+    url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-${linuxVersion}.tar.xz";
+    hash = "sha256-5WyDVt2gETamBBxu+DK9Dsmb0tNd/5eDKqXsEO0BQwQ=";
   };
+
+  # CIX defconfig 始终用 7.0 的配置文件名
+  cixConfigVersion = "7.0";
 
   # ── CIX patches & config ──────────────────────────────────────────
   cixPatchesRev = "3aad82491a599648d87ba1c47cec7968862fa165";
@@ -28,7 +31,6 @@ let
   };
 
   # 动态读取 patches-7.0 目录下的所有 .patch 文件
-  # 文件名已按数字编号排序（0001-xxxx, 0002-xxxx, ..., 2001-xxxx）
   patchDir = "${cixPatchesSrc}/patches-7.0";
   patchFiles = lib.pipe (builtins.readDir patchDir) [
     (lib.filterAttrs (_name: type: type == "regular"))
@@ -42,15 +44,12 @@ let
     patch = patchFile;
   }) patchFiles;
 
-  # 将 CIX defconfig 放入内核源码树的 arch/arm64/configs/
-  # 同时修补关键驱动为内建（原 defconfig 中是模块，initrd 不可用）
+  # 解压 kernel.org tarball + 放入 CIX defconfig
   patchedSrc = runCommand "linux-${linuxVersion}-cix-src" { } ''
-    cp -r ${linuxSrc} $out
+    mkdir -p $out
+    tar -xf ${linuxTarball} -C $out --strip-components=1
     chmod -R u+w $out
-    cp ${cixPatchesSrc}/config/config-${linuxVersion}.defconfig $out/arch/arm64/configs/cix.config
-
-    # 修补 defconfig：将关键启动驱动从模块改为内建。
-    # rootfs 当前在 USB 读卡器上，USB Mass Storage 还需要 SCSI disk(sd_mod)。
+    cp ${cixPatchesSrc}/config/config-${cixConfigVersion}.defconfig $out/arch/arm64/configs/cix.config
     chmod u+w $out/arch/arm64/configs/cix.config
   '';
 
@@ -60,7 +59,7 @@ buildLinux {
   version = linuxVersion;
   src = patchedSrc;
 
-  modDirVersion = "${linuxVersion}.0";
+  modDirVersion = linuxVersion;
 
   inherit kernelPatches;
 
@@ -71,11 +70,11 @@ buildLinux {
   # 标记忽略配置错误（defconfig 可能有未知选项）
   ignoreConfigErrors = true;
 
-  # cix-linux-main 不是 LTS
+  # cix-linux-main 不是 LTS (但 v7.0.11 是 stable)
   isLTS = false;
 
   extraMeta = {
-    description = "Linux ${linuxVersion} with CIX Sky1 patches for Radxa Orion O6/O6N";
+    description = "Linux ${linuxVersion} (stable) with CIX Sky1 patches for Radxa Orion O6/O6N";
     homepage = "https://github.com/cixtech/cix-linux-main";
     platforms = [ "aarch64-linux" ];
   };
