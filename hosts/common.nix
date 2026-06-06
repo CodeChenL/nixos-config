@@ -56,7 +56,7 @@ in
         "nix-command"
         "flakes"
       ];
-      auto-optimise-store = true;
+      # auto-optimise-store 在 Nix 2.18+ 默认开启，无需显式设置
       trusted-users = [
         "root"
         "chen"
@@ -75,10 +75,12 @@ in
     };
     gc = {
       automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 15d";
+      dates = "daily";
+      options = "--delete-older-than 30d";
     };
   };
+  # 最多保留 60 个系统 profile；本 nixpkgs 版本中该选项位于 boot.loader.*.maxGenerations
+  # （如 boot.loader.systemd-boot.maxGenerations），由各 host 单独配置。
 
   system.activationScripts.nixAccessTokens = lib.stringAfter [ "etc" ] ''
     token_source=${lib.escapeShellArg githubTokenSource}
@@ -96,6 +98,14 @@ in
       rm -f "$token_target"
     fi
   '';
+  # ── 交换分区 (zram) ─────────────────────────────────────────────
+  # 所有 host 共享：内存的 100% 用于 zram 压缩交换
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";
+    memoryPercent = 100;
+  };
+
   # ── 系统状态版本 ────────────────────────────────────────────────
   system.stateVersion = "25.11";
 }
