@@ -160,7 +160,6 @@ in
   inherit (userPackages)
     freedownloadmanager
     trae-cn
-    copilot-api
     github-copilot-cli
     natfrp-service
     opencode

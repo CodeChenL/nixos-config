@@ -11,7 +11,6 @@ in
     # AI Tools
     llmAgentsPkgs.claude-code
     llmAgentsPkgs.cc-switch-cli
-    copilot-api
     trae-cn
 
     # ── 浏览器 ────────────────────────────────────────────────
@@ -128,25 +127,4 @@ in
     # 容器化应用运行环境
     linyaps
   ];
-
-  systemd.user.services.copilot-api = {
-    Unit = {
-      Description = "Copilot API server";
-    };
-
-    Service = {
-      ExecStart = "${pkgs.copilot-api}/bin/copilot-api start";
-      Environment = [
-        "HOME=${config.home.homeDirectory}"
-        "XDG_DATA_HOME=${config.xdg.dataHome}"
-      ];
-      Restart = "always";
-      RestartSec = 5;
-      WorkingDirectory = config.home.homeDirectory;
-    };
-
-    Install = {
-      WantedBy = [ "default.target" ];
-    };
-  };
 }
