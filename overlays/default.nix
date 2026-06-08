@@ -92,7 +92,10 @@ in
   };
   master = import inputs.nixpkgs-master {
     system = prev.stdenv.hostPlatform.system;
-    config = { allowUnfree = true; };
+    config = {
+      allowUnfree = true;
+      permittedInsecurePackages = prev.config.permittedInsecurePackages or [ ];
+    };
   };
   nur =
     let

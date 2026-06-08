@@ -105,7 +105,7 @@
     # ── Node.js ─────────────────────────────────────────────────
     nodejs
     yarn
-    nodePackages.prettier
+    prettier
 
     # ── Go / Ruby / Rust ───────────────────────────────────────
     go

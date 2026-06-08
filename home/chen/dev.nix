@@ -170,7 +170,7 @@ EOF
     # ── Node.js ─────────────────────────────────────────────────
     nodejs # 已自带 npm 和 corepack
     yarn
-    nodePackages.prettier
+    prettier
 
     # ── .NET ────────────────────────────────────────────────────
     dotnet-sdk

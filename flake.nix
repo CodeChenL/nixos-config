@@ -2,14 +2,16 @@
   description = "ChenIdeaCentre NixOS 配置";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.11";
+      url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     nixos-hardware.url = "github:NixOS/nixos-hardware";
+
+    nixos-apple-silicon.url = "github:nix-community/nixos-apple-silicon";
 
     # Radxa 官方维护的 nixos-hardware fork（带 orion-o6、cix/sky1 等 Radxa/CIX SoC 模块）
     # 与上游 nixos-hardware 独立，避免污染 ChenIdeaCentre 用的稳定模块
@@ -57,6 +59,7 @@
       nixpkgs,
       home-manager,
       nixos-hardware,
+      nixos-apple-silicon,
       nixos-hardware-radxa,
       disko,
       edl-ng,
@@ -126,6 +129,17 @@
           "openssl-1.1.1w"
           "python-2.7.18.12"
           "ventoy-1.1.10"
+        ];
+      };
+
+      # ── Apple M1 Mac mini (Asahi Linux, aarch64) ───────────────────────
+      nixosConfigurations.ChenAsahiLinux = mkHost {
+        system = "aarch64-linux";
+        hostModulesPath = ./hosts/ChenAsahiLinux;
+        homeConfig = import ./home/chen/asahi.nix;
+        insecurePackages = [
+          "openclaw-2026.5.12"
+          "python-2.7.18.12"
         ];
       };
     };

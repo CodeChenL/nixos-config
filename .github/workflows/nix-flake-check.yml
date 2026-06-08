@@ -1,0 +1,84 @@
+name: Nix Flake Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 取消同一分支上未完成的历史运行，节省 CI 配额
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: flake check + dry build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v9
+
+      - name: Enable flakes
+        run: |
+          mkdir -p ~/.config/nix
+          cat > ~/.config/nix/nix.conf <<EOF
+          experimental-features = nix-command flakes
+          accept-flake-config = true
+          EOF
+
+      - name: Verify secrets not committed
+        run: |
+          if git ls-files secrets/ | grep -q .; then
+            echo "::error::secrets/ contains tracked files; abort to prevent secret leak"
+            git ls-files secrets/
+            exit 1
+          fi
+
+      - name: nix flake check
+        run: nix flake check --no-build --all-systems
+
+      - name: nix flake show
+        run: nix flake show
+
+      # --dry-run 让 Nix 解析所有依赖、暴露缺失输入或语法错误，
+      # 但不实际下载/构建 store paths（避免消耗 CI 时间和磁盘）
+      - name: Dry-build ChenIdeaCentre
+        run: |
+          nix build \
+            .#nixosConfigurations.ChenIdeaCentre.config.system.build.toplevel \
+            --dry-run
+
+      - name: Dry-build ChenWSL
+        run: |
+          nix build \
+            .#nixosConfigurations.ChenWSL.config.system.build.toplevel \
+            --dry-run
+
+      - name: Dry-build ChenRadxaOrionO6N
+        run: |
+          nix build \
+            .#nixosConfigurations.ChenRadxaOrionO6N.config.system.build.toplevel \
+            --dry-run
+
+      - name: Dry-build ChenAsahiLinux
+        run: |
+          nix build \
+            .#nixosConfigurations.ChenAsahiLinux.config.system.build.toplevel \
+            --dry-run
+
+      - name: Lint shell scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
+          additional_files: |
+            skills/*/scripts/*.sh
+            hosts/ChenRadxaOrionO6N/openwrt/scripts/*.sh
+          ignore_paths: |
+            skills/*/scripts/*.py
