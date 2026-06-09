@@ -164,7 +164,7 @@ EOF
        pyelftools
       ]))
     (lib.lowPrio python2)
-    python3Packages.pipx
+    master.pipx
     uv
 
     # ── Node.js ─────────────────────────────────────────────────

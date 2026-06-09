@@ -5,7 +5,7 @@
     # ── AI CLI ──────────────────────────────────────────────────
     github-copilot-cli
     radxa-linkr-debuggerctl
-    opencode
+    unstable.opencode
     poppler-utils
     qpdf
     mupdf
