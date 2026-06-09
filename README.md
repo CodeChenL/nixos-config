@@ -60,6 +60,7 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
 ## 密钥管理
 
 - 密钥目录：`secrets/`（`.gitignore` 保护）
+- `secrets/gpg-public.key` 为 ASCII armored 公钥文本，可直接复制到 GitHub GPG keys；`secrets/gpg-secret.key` 为本地私钥备份，不可上传
 - 引用方式：Nix 配置中**不**直接 `builtins.readFile`，而是从运行时路径读取（`/var/lib/...`）
 - `ChenAsahiLinux` 的 OpenClaw 网关声明式引用 `secrets/opencode/minimax.key` 和 `secrets/openclaw/gateway-token`
 - `ChenAsahiLinux` 暂不在 flake 中直接引用 `/boot/efi/asahi` 的非再分发固件，以保持纯评估
