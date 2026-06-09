@@ -13,7 +13,11 @@
       provider = {
         "openai" = {
           name = "OpenAI";
-          options.baseURL = "http://192.168.2.131:8080/v1";
+          options = {
+            baseURL = "http://192.168.2.131:8080/v1";
+            headerTimeout = 60000;
+            chunkTimeout = 60000;
+          };
         };
       };
     };
