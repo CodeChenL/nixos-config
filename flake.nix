@@ -138,7 +138,7 @@
         hostModulesPath = ./hosts/ChenAsahiLinux;
         homeConfig = import ./home/chen/asahi.nix;
         insecurePackages = [
-          "openclaw-2026.5.12"
+          "openclaw-2026.6.1"
           "python-2.7.18.12"
         ];
       };
