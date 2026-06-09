@@ -14,9 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 优先验证 amd64 自定义 overlay（natfrp、freedownloadmanager 等）
-        # aarch64 单独放低优先级，因 GitHub 无原生 aarch64 runner
-        system: [x86_64-linux, aarch64-linux]
+        include:
+          - system: x86_64-linux
+            host: ChenIdeaCentre
+            packages: "natfrp-service freedownloadmanager trae-cn github-copilot-cli opencode-desktop"
+          - system: aarch64-linux
+            host: ChenRadxaOrionO6N
+            packages: "natfrp-service"
 
     steps:
       - name: Checkout
@@ -37,11 +41,9 @@ jobs:
       - name: Build overlay packages
         run: |
           set -e
-          for pkg in natfrp-service freedownloadmanager trae-cn \
-                     github-copilot-cli opencode-desktop; do
+          for pkg in ${{ matrix.packages }}; do
             echo "=== Building ${pkg} ==="
             nix build \
               --no-link \
-              ".#nixosConfigurations.ChenIdeaCentre.pkgs.${pkg}" 2>&1 \
-              || { echo "::warning::${pkg} build failed on ${{ matrix.system }}"; continue; }
+              ".#nixosConfigurations.${{ matrix.host }}.pkgs.${pkg}"
           done
