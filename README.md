@@ -53,7 +53,7 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
    { <name> = final.callPackage ({ lib, ... }: stdenv.mkDerivation { ... }) { }; }
    ```
 2. 包会被 `overlays/default.nix` 的 `collectPkgs` 自动发现、加入 overlay。
-3. patch/lockfile 放在 `overlays/<name>/` 顶层，与 `default.nix` 同级。
+3. 包定义放在 `overlays/pkgs/<name>/default.nix`；少数共用 patch/lockfile 仍可放在 `overlays/` 顶层，由对应包显式引用。
 
 如果包依赖 `inputs.*`（如 radxa-linkr-debuggerctl），仍可在 `overlays/pkgs/<name>/default.nix` 中访问 `inputs`。
 
@@ -74,7 +74,7 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
 | Workflow | 触发 | 检查项 |
 | --- | --- | --- |
 | `nix-flake-check.yml` | 每次 push/PR | flake 语法、secrets 未泄露、shellcheck |
-| `nix-overlay-build.yml` | 手动 + 每周一 | 自定义 overlay 包的完整构建 |
+| `nix-overlay-build.yml` | 手动 + 每周一 | 按支持架构验证自定义 overlay 包构建 |
 
 CI 只用 GitHub 托管 runner + 公开免费的 `DeterminateSystems/nix-installer-action`，**不**依赖 Cachix 私有缓存（成本太高）。
 
@@ -90,7 +90,7 @@ CI 只用 GitHub 托管 runner + 公开免费的 `DeterminateSystems/nix-install
 
 `home/chen/dev.nix` 包含：VSCode（带 distrox 包装）、Zephyr SDK（嵌入式）、b4（patch 系列工具）、WakaTime。
 
-`home/chen/opencode.nix` 包含 OpenCode CLI 包装 + 桌面版，激活脚本从 `~/.config/opencode/auth.json` 注入 GitHub OAuth 凭据。
+`home/chen/opencode.nix` 管理 OpenCode 配置与 `auth.json` 注入；CLI/桌面包由 overlay 与 Home Manager 包列表引入。
 
 ## 故障排查
 

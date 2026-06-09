@@ -17,10 +17,12 @@
 git status --short
 git add flake.nix flake.lock overlays/default.nix README.md \
   .github/workflows/nix-flake-check.yml \
+  .github/workflows/nix-overlay-build.yml \
   hosts/ChenAsahiLinux/default.nix \
   hosts/ChenAsahiLinux/hardware-configuration.nix \
   hosts/ChenAsahiLinux/disko.nix \
   home/chen/asahi.nix home/chen/openclaw.nix \
+  home/chen/dev.nix home/chen/lsp.nix \
   docs/chen-asahi-linux-install-runbook.md
 ```
 
