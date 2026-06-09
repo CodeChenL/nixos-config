@@ -3,8 +3,8 @@
 let
   kwallet5Compat = pkgs.runCommand "kwallet5-compat" { } ''
     mkdir -p $out/bin
-    ln -s ${lib.getBin pkgs.libsForQt5.kwallet}/bin/kwalletd5 $out/bin/kwalletd5
-    ln -s ${lib.getBin pkgs.libsForQt5.kwallet}/bin/kwalletd5 $out/bin/kwalletd
+    ln -s ${lib.getBin pkgs.kdePackages.kwallet}/bin/kwalletd6 $out/bin/kwalletd5
+    ln -s ${lib.getBin pkgs.kdePackages.kwallet}/bin/kwalletd6 $out/bin/kwalletd
   '';
 in
 
@@ -72,6 +72,8 @@ in
     enableDefaultPackages = true;
     packages = with pkgs; [
       # 中日韩字体
+      source-han-sans       # Adobe 思源黑体（字族名: Source Han Sans SC）
+      source-han-serif      # Adobe 思源宋体
       noto-fonts-cjk-sans
       noto-fonts-cjk-serif
       wqy_microhei
@@ -94,11 +96,133 @@ in
 
     fontconfig = {
       defaultFonts = {
-        serif = [ "Noto Serif CJK SC" "Noto Serif" ];
-        sansSerif = [ "Noto Sans CJK SC" "Noto Sans" ];
+        serif = [ "Source Han Serif SC" "Noto Serif CJK SC" "Noto Serif" ];
+        sansSerif = [ "Source Han Sans SC" "Noto Sans CJK SC" "Noto Sans" ];
         monospace = [ "FiraCode Nerd Font Mono" "Fira Code" "Noto Sans Mono" ];
         emoji = [ "Noto Color Emoji" ];
       };
+
+      localConf = ''
+        <?xml version="1.0"?>
+        <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+        <fontconfig>
+
+          <!-- WPS Office: 思源黑体 → Source Han Sans SC -->
+          <alias>
+            <family>Source Han Sans SC</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>思源黑体</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+
+          <!-- WPS Office: 思源宋体 → Source Han Serif SC -->
+          <alias>
+            <family>Source Han Serif SC</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>思源宋体</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+
+          <!-- WPS Office Common Font Fallback: Windows 中文字体 → CJK 替代 -->
+          <alias>
+            <family>SimSun</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>宋体</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>SimHei</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>黑体</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>Microsoft YaHei</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>微软雅黑</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>KaiTi</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>楷体</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>FangSong</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>仿宋</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>DengXian</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+
+          <!-- WPS Office: 等线 → 无衬线 CJK -->
+          <alias>
+            <family>等线</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+
+          <!-- WPS Office: 方正系列字体 → CJK 替代 -->
+          <alias>
+            <family>FZShuSong</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>FZHei</family>
+            <prefer><family>Source Han Sans SC</family></prefer>
+          </alias>
+          <alias>
+            <family>FZKai</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+          <alias>
+            <family>FZFangSong</family>
+            <prefer><family>Source Han Serif SC</family></prefer>
+          </alias>
+
+          <!-- WPS 公式字体: 符号字体缺失时的回退 -->
+          <alias>
+            <family>Symbol</family>
+            <prefer><family>Noto Sans Symbols</family></prefer>
+          </alias>
+
+          <!-- 通用 fallback: 当请求的字体不存在时优先使用 CJK -->
+          <alias>
+            <family>sans-serif</family>
+            <prefer>
+              <family>Source Han Sans SC</family>
+              <family>Noto Sans CJK SC</family>
+              <family>Noto Sans</family>
+            </prefer>
+          </alias>
+          <alias>
+            <family>serif</family>
+            <prefer>
+              <family>Source Han Serif SC</family>
+              <family>Noto Serif CJK SC</family>
+              <family>Noto Serif</family>
+            </prefer>
+          </alias>
+
+        </fontconfig>
+      '';
     };
   };
 
