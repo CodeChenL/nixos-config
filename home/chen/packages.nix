@@ -24,13 +24,14 @@ in
     pkgs.nur.repos.xddxdd.dingtalk
     feishu
     telegram-desktop
-    qq                         # linuxqq
+    master.qq                         # linuxqq
     unstable.wechat                 # 微信
     element-desktop
     thunderbird
 
     # ── 办公 ──────────────────────────────────────────────────
     libreoffice-fresh
+    wpsoffice-cn
 
     # ── 媒体 ──────────────────────────────────────────────────
     obs-studio

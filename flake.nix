@@ -107,7 +107,7 @@
         insecurePackages = [
           "openssl-1.1.1w"
           "python-2.7.18.12"
-          "ventoy-1.1.10"
+          "ventoy-1.1.12"
         ];
       };
 
@@ -128,7 +128,7 @@
         insecurePackages = [
           "openssl-1.1.1w"
           "python-2.7.18.12"
-          "ventoy-1.1.10"
+          "ventoy-1.1.12"
         ];
       };
 
