@@ -7,68 +7,39 @@
     enableDefaultConfig = false;
 
     # ── 局域网设备 ──────────────────────────────────────────────
-    matchBlocks = {
-      "192.168.33.221" = {
-        user = "radxa";
-      };
-      "192.168.31.198" = {
-        user = "chen";
-      };
-      "192.168.2.222" = {
-        user = "radxa";
-      };
+    settings = {
       "192.168.2.35" = {
-        user = "chen";
-      };
-      "192.168.2.232" = {
-        user = "rock";
-      };
-      "192.168.2.152" = {
-        user = "rock";
-      };
-      "192.168.2.108" = {
-        user = "rock";
+        User = "chen";
       };
       "192.168.2.14" = {
-        user = "chenjiali";
+        User = "chenjiali";
       };
       "192.168.2.18" = {
-        user = "chen";
-      };
-      "192.168.31.215" = {
-        user = "rock";
-      };
-      "192.168.31.124" = {
-        user = "rock";
-      };
-      "192.168.2.176" = {
-        user = "rock";
+        User = "chen";
       };
 
       # ── 全志 Gerrit ──────────────────────────────────────────
       "gerritsdk.allwinnertech.com" = {
-        hostname = "gerritsdk.allwinnertech.com";
-        port = 57418;
-        user = "aw_vamrs";
-        extraOptions = {
-          HostKeyAlgorithms = "+ssh-rsa";
-          PubkeyAcceptedAlgorithms = "+ssh-rsa";
-        };
-        identityFile = "~/.ssh/id_rsa";
-        identitiesOnly = true;
+        HostName = "gerritsdk.allwinnertech.com";
+        Port = 57418;
+        User = "aw_vamrs";
+        HostKeyAlgorithms = "+ssh-rsa";
+        PubkeyAcceptedAlgorithms = "+ssh-rsa";
+        IdentityFile = "~/.ssh/id_rsa";
+        IdentitiesOnly = true;
       };
 
       # ── Amlogic OpenLinux ────────────────────────────────────
       "openlinux.amlogic.com" = {
-        hostname = "openlinux.amlogic.com";
-        user = "git";
-        identityFile = "~/.ssh/amlogic_openlinux";
-        identitiesOnly = true;
+        HostName = "openlinux.amlogic.com";
+        User = "git";
+        IdentityFile = "~/.ssh/amlogic_openlinux";
+        IdentitiesOnly = true;
       };
       "openlinux2.amlogic.com" = {
-        hostname = "openlinux2.amlogic.com";
-        user = "git";
-        identityFile = "~/.ssh/amlogic_openlinux";
+        HostName = "openlinux2.amlogic.com";
+        User = "git";
+        IdentityFile = "~/.ssh/amlogic_openlinux";
       };
     };
   };
