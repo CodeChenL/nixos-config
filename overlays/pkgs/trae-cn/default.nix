@@ -32,7 +32,14 @@
       pango,
       systemd,
       webkitgtk_4_1,
-      xorg,
+      libx11,
+      libxcomposite,
+      libxdamage,
+      libxext,
+      libxfixes,
+      libxrandr,
+      libxcb,
+      libxkbfile,
     }:
 
     stdenv.mkDerivation (finalAttrs: {
@@ -74,14 +81,14 @@
         pango
         systemd
         webkitgtk_4_1
-        xorg.libX11
-        xorg.libXcomposite
-        xorg.libXdamage
-        xorg.libXext
-        xorg.libXfixes
-        xorg.libXrandr
-        xorg.libxcb
-        xorg.libxkbfile
+        libx11
+        libxcomposite
+        libxdamage
+        libxext
+        libxfixes
+        libxrandr
+        libxcb
+        libxkbfile
       ];
 
       installPhase = ''

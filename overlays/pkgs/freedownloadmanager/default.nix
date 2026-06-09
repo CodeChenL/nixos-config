@@ -19,7 +19,7 @@
       pango,
       openssl,
       icu,
-      mysql80,
+      mysql84,
       libdrm,
       pipewire,
       autoPatchelfHook,
@@ -43,7 +43,7 @@
 
       src = fetchurl {
         url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-        hash = "sha256-n1Y6h9xXeqU6LO6h66qlnT9wsjFYqToaAPJ8sTYL9Gg=";
+        hash = "sha256-kttMD7jieGnH62wcR6ldpfhldYAFA3avU5+CyUZPLVU=";
       };
 
       nativeBuildInputs = [
@@ -69,7 +69,7 @@
 
         openssl
         icu
-        mysql80
+        mysql84
         libdrm
         pipewire
       ];
@@ -109,12 +109,9 @@
 
         rm -f \
           "$image_plugin_dir/libqtiff.so" \
+          "$sql_plugin_dir/libqsqlmysql.so" \
           "$sql_plugin_dir/libqsqlibase.so" \
           "$sql_plugin_dir/libqsqloci.so"
-
-        if [ ! -f "$sql_plugin_dir/libqsqlmysql.so" ]; then
-          echo "Warning: MySQL plugin libqsqlmysql.so not found."
-        fi
 
         runHook postInstall
       '';

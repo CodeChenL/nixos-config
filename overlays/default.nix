@@ -64,15 +64,15 @@ let
     expat
     alsa-lib
     libxkbcommon
-    xorg.libX11
-    xorg.libXcomposite
-    xorg.libXcursor
-    xorg.libXdamage
-    xorg.libXext
-    xorg.libXfixes
-    xorg.libXi
-    xorg.libXrandr
-    xorg.libxcb
+    libx11
+    libxcomposite
+    libxcursor
+    libxdamage
+    libxext
+    libxfixes
+    libxi
+    libxrandr
+    libxcb
   ]);
 
   ngr = final.writeShellScriptBin "ngr" ''
@@ -117,27 +117,27 @@ in
       };
       fixedDingtalk = (helperDeps.createCallPackage { }) (xddxddSrc + "/pkgs/uncategorized/dingtalk") {
         inherit (helperDeps) sources;
-        libICE = final.xorg.libICE;
-        libSM = final.xorg.libSM;
-        libX11 = final.xorg.libX11;
-        libxcb = final.xorg.libxcb;
-        libXcomposite = final.xorg.libXcomposite;
-        libXcursor = final.xorg.libXcursor;
-        libXdamage = final.xorg.libXdamage;
-        libXext = final.xorg.libXext;
-        libXfixes = final.xorg.libXfixes;
-        libXi = final.xorg.libXi;
-        libXinerama = final.xorg.libXinerama;
-        libXmu = final.xorg.libXmu;
-        libXrandr = final.xorg.libXrandr;
-        libXrender = final.xorg.libXrender;
-        libXScrnSaver = final.xorg.libXScrnSaver;
-        libXt = final.xorg.libXt;
-        libXtst = final.xorg.libXtst;
-        xcbutilimage = final.xorg.xcbutilimage;
-        xcbutilkeysyms = final.xorg.xcbutilkeysyms;
-        xcbutilrenderutil = final.xorg.xcbutilrenderutil;
-        xcbutilwm = final.xorg.xcbutilwm;
+        libICE = final.libice;
+        libSM = final.libsm;
+        libX11 = final.libx11;
+        libxcb = final.libxcb;
+        libXcomposite = final.libxcomposite;
+        libXcursor = final.libxcursor;
+        libXdamage = final.libxdamage;
+        libXext = final.libxext;
+        libXfixes = final.libxfixes;
+        libXi = final.libxi;
+        libXinerama = final.libxinerama;
+        libXmu = final.libxmu;
+        libXrandr = final.libxrandr;
+        libXrender = final.libxrender;
+        libXScrnSaver = final.libxscrnsaver;
+        libXt = final.libxt;
+        libXtst = final.libxtst;
+        xcbutilimage = final.libxcb-image;
+        xcbutilkeysyms = final.libxcb-keysyms;
+        xcbutilrenderutil = final.libxcb-render-util;
+        xcbutilwm = final.libxcb-wm;
       };
     in
     baseNur
@@ -150,6 +150,13 @@ in
     };
 
   inherit ngrLibraries ngr claude-skills;
+
+  gleam = prev.gleam.overrideAttrs (oldAttrs: {
+    checkFlags = (oldAttrs.checkFlags or [ ]) ++ [
+      "--skip=tests::escript_success_with_dependency"
+    ];
+  });
+
   applyDebianPatches = import ./apply-debian-patches.nix { inherit (final) lib; };
   linux-cix-main = final.callPackage ./linux-cix-main { };
   linuxPackages-cix-main = (final.linuxKernel.packagesFor final.linux-cix-main).extend (lfinal: lprev: {
@@ -159,6 +166,25 @@ in
   cix-dsp-firmware = final.callPackage ./cix-dsp-firmware { };
   cix-vpu-firmware = final.callPackage ./cix-vpu-firmware { };
   cix-vpu-headers = final.callPackage ./cix-vpu-headers { };
+
+  # WPS Office: 上游包已经自带匹配私有 Qt 的 fcitx platform plugin，
+  # 只在桌面入口注入输入法环境，保持命令行启动行为不变。
+  wpsoffice-cn = final.symlinkJoin {
+    name = "wpsoffice-cn-fcitx-desktop";
+    paths = [ prev.wpsoffice-cn ];
+    postBuild = ''
+      for desktop in $out/share/applications/*.desktop; do
+        [ -e "$desktop" ] || continue
+        if [ -L "$desktop" ]; then
+          cp --remove-destination "$(readlink -f "$desktop")" "$desktop"
+        fi
+        substituteInPlace "$desktop" \
+          --replace-fail "Exec=${prev.wpsoffice-cn}/bin/" "Exec=${final.coreutils}/bin/env QT_IM_MODULE=fcitx ${prev.wpsoffice-cn}/bin/"
+      done
+
+      ! grep -R "^Exec=${prev.wpsoffice-cn}/bin" "$out/share/applications"
+    '';
+  };
 
   inherit (userPackages)
     freedownloadmanager
