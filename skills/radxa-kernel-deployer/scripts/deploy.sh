@@ -91,7 +91,7 @@ deploy_one() {
   sudo_remote "${USER}@${host}" "dpkg -i ${pkg_args} || apt -f install -y" || { echo "[FAIL] 安装失败: ${host}"; return 1; }
 
   # 安装后验证
-  sshpass -p "${PASSWORD}" ssh -o StrictHostKeyChecking=no "${USER}@${host}" \
+  sshpass -e ssh -o StrictHostKeyChecking=no "${USER}@${host}" \
     'dpkg -l | grep -E "linux-image|linux-headers"; echo "---"; uname -r'
 
   # 重启
@@ -99,7 +99,7 @@ deploy_one() {
     echo "[INFO] 重启 ${host}..."
     sudo_remote "${USER}@${host}" "reboot" || true
     wait_for_device "${USER}@${host}"
-    sshpass -p "${PASSWORD}" ssh -o StrictHostKeyChecking=no "${USER}@${host}" 'uname -r'
+    sshpass -e ssh -o StrictHostKeyChecking=no "${USER}@${host}" 'uname -r'
   fi
 
   echo "[OK] ${host} 部署完成"

@@ -28,8 +28,9 @@ retry_ssh() {
 
 sudo_remote() {
   local host="$1" cmd="$2"
-  # 本地 sshpass -e 从 SSHPASS 读取密码，通过 SSH stdin 转发给远端 sudo -S
-  # 注意：用 -T（禁用 PTY）确保 stdin 正确转发给 sudo；-tt 会接管 stdin 导致密码丢失
+  # sshpass -e 用 SSHPASS 完成 SSH 登录；printf 再把同一个密码喂给远端 sudo -S。
+  # 注意：用 -T（禁用 PTY）确保 stdin 正确转发给 sudo；-tt 会接管 stdin 导致密码丢失。
+  printf '%s\n' "${SSHPASS}" | \
   sshpass -e ssh -T -o StrictHostKeyChecking=no "${host}" \
     "sudo -S bash -c '${cmd}'"
 }
