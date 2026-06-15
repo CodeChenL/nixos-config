@@ -191,8 +191,6 @@ in
     trae-cn
     github-copilot-cli
     natfrp-service
-    opencode
-    opencode-desktop
     radxa-linkr-debuggerctl
     ;
 }
