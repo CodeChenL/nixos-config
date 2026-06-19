@@ -29,9 +29,22 @@ let
 
     auto_start_tunnels='${autoStartTunnelsJson}'
     if [ ${startAllTunnelsEnabled} = true ]; then
-      tunnels_json=$(${pkgs.curl}/bin/curl -fsSL \
-        -H "Authorization: Bearer $token" \
-        ${lib.escapeShellArg "${cfg.apiBaseUrl}/tunnels"} 2>/dev/null) || tunnels_json="[]"
+      tunnels_json=""
+      for attempt in 1 2 3 4 5; do
+        if tunnels_json=$(${pkgs.curl}/bin/curl -fsSL \
+          -H "Authorization: Bearer $token" \
+          ${lib.escapeShellArg "${cfg.apiBaseUrl}/tunnels"}); then
+          break
+        fi
+
+        if [ "$attempt" -eq 5 ]; then
+          echo "Failed to fetch natfrp tunnel list after $attempt attempts" >&2
+          exit 1
+        fi
+
+        sleep "$attempt"
+      done
+
       auto_start_tunnels=$(printf '%s' "$tunnels_json" | ${pkgs.jq}/bin/jq -c 'map(.id)')
     fi
 
@@ -187,6 +200,8 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = 10;
         Environment = [
           "NATFRP_SERVICE_WD=${cfg.workDir}"
           "HOME=${cfg.workDir}"
