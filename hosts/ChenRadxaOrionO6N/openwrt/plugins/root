@@ -1,0 +1,2 @@
+# OpenWrt crontab - managed by Nix
+*/10 * * * * if ! ping -c 3 -W 5 192.168.2.1 > /dev/null 2>&1; then ifdown vamrs && ifup vamrs; fi

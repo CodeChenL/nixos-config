@@ -155,6 +155,43 @@ let
     cp /tmp/o6n-managed-config-files /etc/o6n-managed-config-files
     chmod 0600 /etc/o6n-managed-config-files
     /etc/init.d/network restart || /sbin/reload_config || true
+    /etc/init.d/firewall restart || /etc/init.d/firewall reload || /sbin/reload_config || true
+
+    # Apply crontab from managed plugin file
+    mkdir -p /etc/crontabs
+    if [ -f /etc/config/root ]; then
+      cp /etc/config/root /etc/crontabs/root
+      chmod 0600 /etc/crontabs/root
+      /etc/init.d/cron restart || true
+    fi
+  '';
+
+  setRootPasswordScript = pkgs.writeText "o6n-openwrt-set-root-password.sh" ''
+    set -eu
+    hash="$1"
+    case "$hash" in
+      \$*) ;;
+      *)
+        echo "Refusing to set root password from a non-crypt hash" >&2
+        exit 1
+        ;;
+    esac
+    tmp="$(mktemp)"
+    awk -F: -v OFS=: -v hash="$hash" '
+      $1 == "root" {
+        $2 = hash
+        found = 1
+      }
+      { print }
+      END {
+        if (!found) {
+          exit 1
+        }
+      }
+    ' /etc/shadow > "$tmp"
+    cp "$tmp" /etc/shadow
+    chmod 0600 /etc/shadow
+    rm -f "$tmp"
   '';
 
   ensureOpenWrt = pkgs.writeShellApplication {
@@ -236,10 +273,31 @@ let
       fi
 
       python3 ${renderOpenWrtConfig} ${openwrtConfigDir} "$render_dir" ${secretFile}
+      root_password_hash="$(python3 - "$render_dir/rpcd" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+content = Path(sys.argv[1]).read_text(errors="surrogateescape")
+match = re.search(r"option password '([^']+)'", content)
+if match is None:
+    raise SystemExit(1)
+print(match.group(1))
+PY
+      )"
+      [ -n "$root_password_hash" ]
+      case "$root_password_hash" in
+        \$*) ;;
+        *)
+          echo "RPCD_ROOT_PASSWORD_HASH must be a crypt hash" >&2
+          exit 1
+          ;;
+      esac
 
       ${ensureOpenWrt}/bin/o6n-openwrt-ensure
       incus file push ${cleanupScript} ${containerName}/tmp/o6n-cleanup.sh
       incus file push ${applyScript} ${containerName}/tmp/o6n-apply.sh
+      incus file push ${setRootPasswordScript} ${containerName}/tmp/o6n-set-root-password.sh
       incus file push ${managedConfigManifest} ${containerName}/tmp/o6n-managed-config-files
 
       incus exec ${containerName} -- sh /tmp/o6n-cleanup.sh
@@ -247,6 +305,7 @@ let
       ${pushConfigCommands}
 
       incus exec ${containerName} -- sh /tmp/o6n-apply.sh
+      incus exec ${containerName} -- sh /tmp/o6n-set-root-password.sh "$root_password_hash"
     '';
   };
 in
