@@ -103,6 +103,10 @@ OPENCLASH_SUBSCRIBE_INFO_URL=
 RPCD_ROOT_PASSWORD_HASH=
 ```
 
+`RPCD_ROOT_PASSWORD_HASH` is reused for both the LuCI/rpcd login and the
+container root account used by `dropbear`/SSH, so one declared hash keeps both
+access paths aligned.
+
 If a value contains characters that are awkward to store literally, use
 `NAME=base64:<base64-value>`. The reconcile service fails closed if the secret
 file is missing, too permissive, or lacks a required key.
