@@ -97,6 +97,10 @@
   # 由 Radxa nixos-hardware 模块提供该 option
   hardware.radxa.cachix.enable = true;
 
+  # ── IRQ 均衡：保留 Radxa cix-profiles 的 O6N 默认 CPU 黑名单 ───────
+  services.irqbalance.enable = true;
+  systemd.services.irqbalance.environment.IRQBALANCE_BANNED_CPULIST = "2-5";
+
   # ── 关闭 systemd runtime watchdog ─────────────────────────────────
   # CIX Sky1 的硬件 watchdog 行为在某些内核下会导致误触发 panic，
   # 参考上游 Radxa 配置关闭；如需硬件看门狗可在后续按 BSP 文档恢复
