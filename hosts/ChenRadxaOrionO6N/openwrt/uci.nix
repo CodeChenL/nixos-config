@@ -346,6 +346,18 @@ let
           (mkList "network" [
             "wan"
             "wan6"
+          ])
+        ];
+      }
+      {
+        type = "zone";
+        name = null;
+        entries = [
+          (mkScalar "name" "wg")
+          (mkScalar "input" "ACCEPT")
+          (mkScalar "output" "ACCEPT")
+          (mkScalar "forward" "ACCEPT")
+          (mkList "network" [
             "vamrs"
             "chen"
           ])
@@ -361,9 +373,17 @@ let
       }
       {
         type = "forwarding";
-        name = "lan_wg";
+        name = "lan_to_wg";
         entries = [
           (mkScalar "src" "lan")
+          (mkScalar "dest" "wg")
+        ];
+      }
+      {
+        type = "forwarding";
+        name = "wg_to_lan";
+        entries = [
+          (mkScalar "src" "wg")
           (mkScalar "dest" "lan")
         ];
       }
