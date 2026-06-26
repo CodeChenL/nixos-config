@@ -62,5 +62,6 @@
     public-inbox
     debian-devscripts
     dpkg
+    rustty
   ];
 }

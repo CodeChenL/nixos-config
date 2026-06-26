@@ -192,5 +192,6 @@ in
     github-copilot-cli
     natfrp-service
     radxa-linkr-debuggerctl
+    rustty
     ;
 }

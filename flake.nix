@@ -51,6 +51,11 @@
       url = "github:xzl01/agent-debugboard?ref=dev";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    rustty = {
+      url = "github:CodeChenL/rustty?ref=dev";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
