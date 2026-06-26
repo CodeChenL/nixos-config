@@ -18,6 +18,20 @@
   xdg.configFile."autostart/org.kde.yakuake.desktop".source =
     "${pkgs.kdePackages.yakuake}/share/applications/org.kde.yakuake.desktop";
 
+  # ── KDE Plasma 桌面 UI 语言 ───────────────────────────────────
+  # NixOS 下 KDE 系统设置的 "Region & Language" 页面功能损坏，必须直接写
+  # ~/.config/plasma-localerc。声明式管理避免手动在系统设置里改被 rebuild 覆盖。
+  # - [Formats].LANG: 区域格式用 en_US.UTF-8（日期/数字等国际标准格式）
+  # - [Translations].LANGUAGE: KDE UI 翻译语言用 zh_CN（桌面显示中文）
+  # SSH/终端 shell 不读此文件，仍由 shell.nix 的 profileExtra 控制为英文。
+  xdg.configFile."plasma-localerc".text = ''
+    [Formats]
+    LANG=en_US.UTF-8
+
+    [Translations]
+    LANGUAGE=zh_CN
+  '';
+
   xdg.dataFile."io.github.clash-verge-rev.clash-verge-rev/profiles/Merge.yaml".text = ''
     dns:
       enable: true

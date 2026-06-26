@@ -227,7 +227,11 @@ in
   };
 
   # ── 语言与国际化 ────────────────────────────────────────────────
+  # 系统默认英文（SSH/非 KDE 程序英文）；区域格式用中国标准（日期/货币/度量等）。
+  # KDE 桌面 UI 的中文翻译由 home-manager 的 plasma-localerc 单独控制，
+  # 不受此处 defaultLocale 影响（NixOS 下 KDE 系统设置页 locale 功能已损坏）。
   i18n.defaultLocale = "en_US.UTF-8";
+  i18n.extraLocales = [ "zh_CN.UTF-8/UTF-8" ];
   i18n.extraLocaleSettings = {
     LC_ADDRESS = "zh_CN.UTF-8";
     LC_IDENTIFICATION = "zh_CN.UTF-8";

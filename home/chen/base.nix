@@ -19,7 +19,10 @@
 
   home.sessionVariables = {
     EDITOR = "vim";
-    LANGUAGE = "en_US";
+    # 注意：不在此处设置 LANGUAGE / LANG。
+    # 全局 sessionVariables 会被注入 systemd user session，KDE 会话会继承，
+    # 从而覆盖 plasma-localerc 里的 Translations.LANGUAGE（KDE UI 语言）。
+    # SSH/终端 shell 的英文环境由 shell.nix 的 profileExtra 单独 export。
     PKG_CONFIG_PATH = "${config.home.profileDirectory}/lib/pkgconfig:${config.home.profileDirectory}/share/pkgconfig";
   };
 
