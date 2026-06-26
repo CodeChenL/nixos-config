@@ -8,7 +8,7 @@
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
       model = "openai/gpt-5.4";
-      plugin = [ "opencode-mem" "oh-my-openagent" "opencode-pty" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
+      plugin = [ "opencode-mem" "oh-my-openagent" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
       autoupdate = false;
       provider = {
         "openai" = {
@@ -32,7 +32,7 @@
           name = "Volcano Engine";
           npm = "@ai-sdk/openai";
           options = {
-            baseURL = "http://sub2api.vamrs.org:8080/v1";
+            baseURL = "http://192.168.2.131:8080/v1";
             body = {
               thinking = {
                 type = "enabled";
@@ -40,8 +40,18 @@
             };
           };
           models = {
-            "GLM-5.2" = {
-              name = "GLM-5.2";
+            "glm-5.2" = {
+              name = "glm-5.2";
+              options = {
+                thinking = {
+                  type = "enabled";
+                };
+              };
+              variants = {
+                max = {
+                  reasoningEffort = "max";
+                };
+              };
               limit = {
                 context = 1024000;
                 output = 4096;
@@ -51,8 +61,18 @@
                 output = [ "text" ];
               };
             };
-            "kimi-k2.6" = {
-              name = "kimi-k2.6";
+            "kimi-k2.7-code" = {
+              name = "kimi-k2.7-code";
+              options = {
+                thinking = {
+                  type = "enabled";
+                };
+              };
+              variants = {
+                max = {
+                  reasoningEffort = "max";
+                };
+              };
               limit = {
                 context = 256000;
                 output = 4096;
