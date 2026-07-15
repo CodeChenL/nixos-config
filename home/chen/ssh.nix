@@ -8,16 +8,6 @@
 
     # ── 局域网设备 ──────────────────────────────────────────────
     settings = {
-      "192.168.2.35" = {
-        User = "chen";
-      };
-      "192.168.2.14" = {
-        User = "chenjiali";
-      };
-      "192.168.2.18" = {
-        User = "chen";
-      };
-
       # ── 全志 Gerrit ──────────────────────────────────────────
       "gerritsdk.allwinnertech.com" = {
         HostName = "gerritsdk.allwinnertech.com";
