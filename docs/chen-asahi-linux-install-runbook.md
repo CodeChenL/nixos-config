@@ -104,14 +104,14 @@ cd nixos-config
 如果没有远端 Git 仓库，可以从控制机拷贝：
 
 ```sh
-scp -r /home/chen/nixos-config root@<installer-ip>:/tmp/install/nixos-config
+scp -r "$HOME/nixos-config" root@<installer-ip>:/tmp/install/nixos-config
 ```
 
 准备 OpenClaw secrets。不要把 secret 提交进 Git；安装后它们应位于：
 
 ```text
-/home/chen/nixos-config/secrets/opencode/minimax.key
-/home/chen/nixos-config/secrets/openclaw/gateway-token
+~/nixos-config/secrets/opencode/minimax.key
+~/nixos-config/secrets/openclaw/gateway-token
 ```
 
 ## 5. 用 disko 分区、格式化并挂载
@@ -160,17 +160,19 @@ findmnt /mnt/boot/efi
 把仓库复制到新系统 root 内的固定路径：
 
 ```sh
-install -d -m 0755 /mnt/home/chen
-rsync -a --delete /tmp/install/nixos-config/ /mnt/home/chen/nixos-config/
+TARGET_REPO=/mnt/home/chen/nixos-config
+install -d -m 0755 "$(dirname "$TARGET_REPO")"
+rsync -a --delete /tmp/install/nixos-config/ "$TARGET_REPO/"
 ```
 
 如果 secrets 不在仓库复制范围内，手动创建并复制：
 
 ```sh
-install -d -m 0700 /mnt/home/chen/nixos-config/secrets/opencode
-install -d -m 0700 /mnt/home/chen/nixos-config/secrets/openclaw
-install -m 0600 /path/to/minimax.key /mnt/home/chen/nixos-config/secrets/opencode/minimax.key
-install -m 0600 /path/to/gateway-token /mnt/home/chen/nixos-config/secrets/openclaw/gateway-token
+TARGET_REPO=/mnt/home/chen/nixos-config
+install -d -m 0700 "$TARGET_REPO/secrets/opencode"
+install -d -m 0700 "$TARGET_REPO/secrets/openclaw"
+install -m 0600 /path/to/minimax.key "$TARGET_REPO/secrets/opencode/minimax.key"
+install -m 0600 /path/to/gateway-token "$TARGET_REPO/secrets/openclaw/gateway-token"
 ```
 
 ## 7. 安装 NixOS
