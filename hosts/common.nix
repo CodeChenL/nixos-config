@@ -1,7 +1,7 @@
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, ... }:
 
 let
-  githubTokenSource = "/home/chen/nixos-config/secrets/gh_tk";
+  githubTokenSource = "${config.users.users.chen.home}/nixos-config/secrets/gh_tk";
 in
 
 {
@@ -31,6 +31,7 @@ in
     unrar
     p7zip
     tree
+    multipath-tools
   ];
 
   # ── 程序 ─────────────────────────────────────────────────────────
