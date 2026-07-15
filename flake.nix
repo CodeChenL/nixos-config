@@ -28,7 +28,7 @@
     NUR.url = "github:nix-community/NUR";
 
     edl-ng = {
-      url = "github:strongtz/edl-ng/de101db593b8ee92cb1c6ee8e2c60bd9037d66ed";
+      url = "github:strongtz/edl-ng/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -143,7 +143,7 @@
         hostModulesPath = ./hosts/ChenAsahiLinux;
         homeConfig = import ./home/chen/asahi.nix;
         insecurePackages = [
-          "openclaw-2026.6.1"
+          "openclaw-2026.6.11"
           "python-2.7.18.12"
         ];
       };
