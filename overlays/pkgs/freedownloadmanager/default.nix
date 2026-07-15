@@ -43,7 +43,7 @@
 
       src = fetchurl {
         url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-        hash = "sha256-kttMD7jieGnH62wcR6ldpfhldYAFA3avU5+CyUZPLVU=";
+        hash = "sha256-sjrXzR3MBWxJz7WHQQdV66dfx3tChfXqX1Psi2kzaKM=";
       };
 
       nativeBuildInputs = [
@@ -86,6 +86,7 @@
           --unset QT_PLUGIN_PATH \
           --set QML2_IMPORT_PATH '${qmlImportPath}' \
           --set NIXPKGS_QT6_QML_IMPORT_PATH '${qmlImportPath}' \
+          --set QT_QPA_PLATFORM xcb \
           --prefix LD_LIBRARY_PATH : "$out/opt/freedownloadmanager/lib:${pipewireLibPath}" \
           --prefix XDG_DATA_DIRS : "$out/share"
 
