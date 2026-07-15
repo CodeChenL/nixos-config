@@ -117,8 +117,8 @@ in
 
     tokenFile = lib.mkOption {
       type = lib.types.str;
-      default = "/home/chen/nixos-config/secrets/natfrp/token";
-      description = "Local file path containing the natfrp access token.";
+      default = "${cfg.workDir}/token";
+      description = "Runtime file path containing the natfrp access token.";
     };
 
     tokenSourceFile = lib.mkOption {
@@ -149,8 +149,8 @@ in
 
     remoteManagement.passwordFile = lib.mkOption {
       type = lib.types.str;
-      default = "/home/chen/nixos-config/secrets/natfrp/remote-password";
-      description = "Local file path containing the plain-text natfrp remote management password.";
+      default = "${cfg.workDir}/remote-password";
+      description = "Runtime file path containing the plain-text natfrp remote management password.";
     };
 
     remoteManagement.passwordSourceFile = lib.mkOption {

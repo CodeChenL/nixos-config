@@ -134,9 +134,9 @@
   services.natfrp = {
     enable = true;
     startAllTunnels = true;
-    tokenSourceFile = "/home/chen/nixos-config/secrets/natfrp/token";
+    tokenSourceFile = "${config.users.users.chen.home}/nixos-config/secrets/natfrp/token";
     remoteManagement.enable = true;
-    remoteManagement.passwordSourceFile = "/home/chen/nixos-config/secrets/natfrp/remote-password";
+    remoteManagement.passwordSourceFile = "${config.users.users.chen.home}/nixos-config/secrets/natfrp/remote-password";
   };
 
   # ── 系统状态版本 ─────────────────────────────────────────────────
