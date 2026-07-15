@@ -6,6 +6,7 @@ let
 
   vscodeRuntimeLibPath = pkgs.lib.makeLibraryPath [
     pkgs.stdenv.cc.cc.lib
+    pkgs.icu
   ];
 
   wrapVSCode = package: binaryName:
