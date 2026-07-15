@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 
 {
   # ── OpenCode 声明式配置 ───────────────────────────────────────
@@ -8,7 +8,13 @@
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
       model = "openai/gpt-5.4";
-      plugin = [ "opencode-mem" "oh-my-openagent" "@mohak34/opencode-notifier@latest" "opencode-wakatime" ];
+      plugin = [
+        "opencode-mem@latest"
+        "oh-my-openagent@latest"
+        "@mohak34/opencode-notifier@latest"
+        "opencode-wakatime@latest"
+        "opencode-feishu-notifier@latest"
+      ];
       autoupdate = false;
       provider = {
         "openai" = {
@@ -17,71 +23,47 @@
             headerTimeout = 60000;
             chunkTimeout = 60000;
           };
+          "models" = {
+            "gpt-5.6-luna" = {
+              "variants" = {
+                "max" = {
+                  "reasoningEffort" = "max";
+                };
+              };
+            };
+            "gpt-5.6-terra" = {
+              "variants" = {
+                "max" = {
+                  "reasoningEffort" = "max";
+                };
+              };
+            };
+            "gpt-5.6-sol" = {
+              "variants" = {
+                "max" = {
+                  "reasoningEffort" = "max";
+                };
+              };
+            };
+          };
         };
         "xiaomi-token-plan-cn" = {
-          options = {
-            baseURL = "http://192.168.2.131:8080/v1";
+          models = {
+            "mimo-v2.5-pro" = {
+              options = {
+                frequencyPenalty = 1;
+              };
+            };
+            "mimo-v2.5" = {
+              options = {
+                frequencyPenalty = 1;
+              };
+            };
           };
         };
         "deepseek" = {
           options = {
             baseURL = "http://192.168.2.131:8080/v1";
-          };
-        };
-        "volcengine-plan" = {
-          name = "Volcano Engine";
-          npm = "@ai-sdk/openai";
-          options = {
-            baseURL = "http://192.168.2.131:8080/v1";
-            body = {
-              thinking = {
-                type = "enabled";
-              };
-            };
-          };
-          models = {
-            "glm-5.2" = {
-              name = "glm-5.2";
-              options = {
-                thinking = {
-                  type = "enabled";
-                };
-              };
-              variants = {
-                max = {
-                  reasoningEffort = "max";
-                };
-              };
-              limit = {
-                context = 1024000;
-                output = 4096;
-              };
-              modalities = {
-                input = [ "text" ];
-                output = [ "text" ];
-              };
-            };
-            "kimi-k2.7-code" = {
-              name = "kimi-k2.7-code";
-              options = {
-                thinking = {
-                  type = "enabled";
-                };
-              };
-              variants = {
-                max = {
-                  reasoningEffort = "max";
-                };
-              };
-              limit = {
-                context = 256000;
-                output = 4096;
-              };
-              modalities = {
-                input = [ "text" "image" ];
-                output = [ "text" ];
-              };
-            };
           };
         };
       };
@@ -128,15 +110,48 @@
             cat > "$AUTH_TMP" << EOF
     {
       "deepseek": {"type": "api", "key": "$VMK"},
-      "xiaomi-token-plan-cn": {"type": "api", "key": "$VMK"},
+      "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
       "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
-      "openai": {"type": "api", "key": "$VMK"},
-      "volcengine-plan": { "type": "api", "key": "$VMK"}
+      "openai": {"type": "api", "key": "$VMK"}
     }
     EOF
           )
           mv "$AUTH_TMP" "$AUTH"
           chmod 600 "$AUTH"
+        fi
+  '';
+
+  # feishu-notifier.json: generated from a runtime secret file to keep credentials out of the nix store.
+  home.activation.createOpencodeFeishuNotifierConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        CONFIG="$HOME/.config/opencode/feishu-notifier.json"
+        SECRETS_DIR="$HOME/nixos-config/secrets/opencode"
+        SOURCE="$SECRETS_DIR/feishu-notifier.json"
+
+        if [ -f "$SOURCE" ]; then
+          mkdir -p "$(dirname "$CONFIG")"
+          chmod 700 "$(dirname "$CONFIG")"
+          CONFIG_TMP="$CONFIG.tmp"
+          (
+            umask 077
+            ${pkgs.jq}/bin/jq -ce '
+              if type == "object"
+                 and (.appId | type == "string" and length > 0)
+                 and (.appSecret | type == "string" and length > 0)
+                 and (.receiverId | type == "string" and length > 0)
+                 and (.receiverType == "user_id" or .receiverType == "open_id" or .receiverType == "chat_id")
+              then {
+                appId: .appId,
+                appSecret: .appSecret,
+                receiverType: .receiverType,
+                receiverId: .receiverId
+              }
+              else error("Invalid Feishu notifier config")
+              end
+            ' "$SOURCE" \
+              > "$CONFIG_TMP"
+          )
+          mv "$CONFIG_TMP" "$CONFIG"
+          chmod 600 "$CONFIG"
         fi
   '';
 
