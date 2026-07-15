@@ -1,9 +1,9 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 let
   openclawPackage = pkgs.master.openclaw;
-  openclawStateDir = "/home/chen/.openclaw";
-  secretsDir = "/home/chen/nixos-config/secrets";
+  openclawStateDir = "${config.home.homeDirectory}/.openclaw";
+  secretsDir = "${config.home.homeDirectory}/nixos-config/secrets";
   minimaxApiKey = {
     source = "file";
     provider = "minimax";
@@ -126,7 +126,7 @@ in
       SuccessExitStatus = "0 143";
       KillMode = "control-group";
       Environment = [
-        "HOME=/home/chen"
+        "HOME=${config.home.homeDirectory}"
         "TMPDIR=/tmp"
         "OPENCLAW_HOME=${openclawStateDir}"
         "OPENCLAW_CONFIG_PATH=${openclawStateDir}/openclaw.json"
