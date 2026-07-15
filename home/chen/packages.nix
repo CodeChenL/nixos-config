@@ -1,16 +1,12 @@
 { config, pkgs, inputs, osConfig ? { }, ... }:
 
-let
-  llmAgentsPkgs = inputs.llm-agents.mkPackagesFor pkgs;
-in
-
 {
   imports = [ ./packages-cli.nix ];
 
   home.packages = with pkgs; [
     # AI Tools
-    llmAgentsPkgs.claude-code
-    llmAgentsPkgs.cc-switch-cli
+    llm-agents.claude-code
+    llm-agents.cc-switch-cli
     trae-cn
 
     # ── 浏览器 ────────────────────────────────────────────────
