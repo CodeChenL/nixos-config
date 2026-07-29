@@ -117,8 +117,9 @@
     jq
     pandoc
 
-    # ── Ollama (AI) ─────────────────────────────────────────────
+    # ── AI / LLM ─────────────────────────────────────────────────
     ollama
+    llama-cpp-full  # llama.cpp with OpenVINO, CUDA, Vulkan, OpenCL, BLAS support
   ] ++ pkgs.lib.optionals (!(osConfig.services.linyaps.enable or false)) [
     # 容器化应用运行环境
     linyaps

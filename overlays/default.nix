@@ -192,6 +192,7 @@ in
     freedownloadmanager
     trae-cn
     github-copilot-cli
+    llama-cpp-full
     natfrp-service
     radxa-linkr-debuggerctl
     rustty
