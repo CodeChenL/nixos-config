@@ -9,7 +9,7 @@
       arch = if final.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64";
       hash = if final.stdenv.hostPlatform.isAarch64
         then "sha256-O27KIOwCoBEZzIzFnGMs9DSG6ZeY/Lb02zhXUkLNuUw="
-        else "sha256-MvM7aSUP51ohRr8UEgSTUmxcmpn9jbTLtpBLYSH2x+Y=";
+        else "sha256-kCJm2kdos43WoikFoFDhDVkU7EjlFoK1+4ASG/CvUTA=";
     in
     stdenvNoCC.mkDerivation {
       pname = "natfrp-service";
