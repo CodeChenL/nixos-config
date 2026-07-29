@@ -45,14 +45,9 @@ in
       provider = {
         "openai" = {
           options = {
-            baseURL = "http://0.0.0.0:8080/v1";
+            baseURL = "http://192.168.2.234:8080/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
-          };
-        };
-        "deepseek" = {
-          options = {
-            baseURL = "http://192.168.2.131:8080/v1";
           };
         };
       };
@@ -229,25 +224,32 @@ in
   home.activation.createOpencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         AUTH="$HOME/.local/share/opencode/auth.json"
         SECRETS="$HOME/nixos-config/secrets/opencode"
-        if [ -f "$SECRETS/deepseek.key" ] \
+        if [ -f "$SECRETS/and.key" ] \
+          && [ -f "$SECRETS/deepseek.key" ] \
+          && [ -f "$SECRETS/kimi.key" ] \
           && [ -f "$SECRETS/xiaomi.key" ] \
           && [ -f "$SECRETS/minimax.key" ] \
-          && [ -f "$SECRETS/vamrs.key" ]; then
+          && [ -f "$SECRETS/vamrs.key" ] \
+          && [ -f "$SECRETS/vamrs-atp.key" ]; then
           mkdir -p "$(dirname "$AUTH")"
           chmod 700 "$(dirname "$AUTH")"
+          AND=$(tr -d '\n' < "$SECRETS/and.key")
           DSK=$(tr -d '\n' < "$SECRETS/deepseek.key")
-          XMK=$(tr -d '\n' < "$SECRETS/xiaomi.key")
+          KMK=$(tr -d '\n' < "$SECRETS/kimi.key")
           MMK=$(tr -d '\n' < "$SECRETS/minimax.key")
           VMK=$(tr -d '\n' < "$SECRETS/vamrs.key")
+          VMKA=$(tr -d '\n' < "$SECRETS/vamrs-atp.key")
+          XMK=$(tr -d '\n' < "$SECRETS/xiaomi.key")
           AUTH_TMP="$AUTH.tmp"
           (
             umask 077
             cat > "$AUTH_TMP" << EOF
     {
-      "deepseek": {"type": "api", "key": "$VMK"},
+      "deepseek": {"type": "api", "key": "$DSK"},
+      "kimi-for-coding": {"type": "api", "key": "$KMK"},
       "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
       "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
-      "openai": {"type": "api", "key": "$VMK"}
+      "openai": {"type": "api", "key": "$AND"}
     }
     EOF
           )
