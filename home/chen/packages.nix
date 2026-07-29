@@ -85,6 +85,7 @@
     hdparm
     gptfdisk
     dosfstools
+    e2fsprogs
     exfatprogs
     squashfsTools
     ventoy
@@ -93,6 +94,7 @@
     cdrtools
     wimlib
     mtools
+    multipath-tools
     read-edid
 
     # ── 硬件工具 ─────────────────────────────────────────────────
