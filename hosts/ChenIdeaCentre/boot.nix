@@ -1,8 +1,13 @@
 { config, pkgs, ... }:
 
+let
+  ch347-vcp = config.boot.kernelPackages.callPackage ../../overlays/ch347-vcp { };
+in
 {
   # ── 内核 (使用 release 默认内核) ─────────────────────────────────
   boot.kernelPackages = pkgs.linuxPackages;
+
+  boot.extraModulePackages = [ ch347-vcp ];
 
   # ── 引导加载器 (GRUB EFI) ───────────────────────────────────────
   boot.loader = {

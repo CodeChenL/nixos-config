@@ -4,6 +4,9 @@
   # ── 传感器 ──────────────────────────────────────────────────────
   hardware.sensor.iio.enable = true;
 
+  # I2C userspace device nodes and access rules (/dev/i2c-*).
+  hardware.i2c.enable = true;
+
   # ── 硬件温度监控 ─────────────────────────────────────────────────
   environment.systemPackages = with pkgs; [
     lm_sensors
@@ -30,7 +33,7 @@
 
   # ── USB/IP ──────────────────────────────────────────────────────
   # USB/IP 内核模块
-  boot.kernelModules = [ "usbip-host" "vhci-hcd" ];
+  boot.kernelModules = [ "usbip-host" "vhci-hcd" "spidev" ];
 
   # ── Sunshine（远程桌面主机 — Moonlight 客户端配对）─────────────────
   services.sunshine = {
