@@ -6,6 +6,8 @@
   home.packages = with pkgs; [
     # ── 浏览器 ────────────────────────────────────────────────
     firefox
+    google-chrome
+    chromium
     microsoft-edge
 
     # ── 下载 ───────────────────────────────────────────────────
