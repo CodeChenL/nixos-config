@@ -114,4 +114,13 @@
     # KDE inotify 文件监控上限
     "fs.inotify.max_user_watches" = 540672;
   };
+
+  # ── Sub2API（AI API 网关）────────────────────────────────────────
+  services.sub2api = {
+    enable = true;
+    port = 8080;
+    adminEmail = "chenjiali@radxa.com";
+    adminPasswordSourceFile = "${config.users.users.chen.home}/nixos-config/secrets/sub2api/admin-password";
+    secretsDir = "/var/lib/sub2api/secrets";
+  };
 }

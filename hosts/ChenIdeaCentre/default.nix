@@ -16,6 +16,7 @@
     ./networking.nix
     ./services.nix
     ./virtualization.nix
+    ./sub2api.nix
   ];
 
   # ── 蒲公英访问端（异地组网）──────────────────────────────────────
