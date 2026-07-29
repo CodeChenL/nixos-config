@@ -43,7 +43,7 @@
 
       src = fetchurl {
         url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-        hash = "sha256-sjrXzR3MBWxJz7WHQQdV66dfx3tChfXqX1Psi2kzaKM=";
+        hash = "sha256-r39BCgBJaE6FgrGyFXeVq7nhLUX7o8JeUi3wAOVtBCk=";
       };
 
       nativeBuildInputs = [
