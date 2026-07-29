@@ -1,0 +1,44 @@
+diff --git a/gpio-ch347.c b/gpio-ch347.c
+index f7057b3..d25f097 100644
+--- a/gpio-ch347.c
++++ b/gpio-ch347.c
+@@ -89,10 +89,11 @@ static int ch347_gpio_get_multiple(struct gpio_chip *chip, unsigned long *mask,
+ 	return 0;
+ }
+ 
+-static void ch347_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
++static int ch347_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+ {
++	int rc;
+ 	struct ch347_gpio *ch347 = gpiochip_get_data(chip);
+-	if (offset > 7) return;
++	if (offset > 7) return 0;
+ 	memset(ch347->obuf + 3, 0, 8); // clear all pins
+ 	ch347->obuf[3 + offset] |= 0xc0; // enable pin change
+ 	if (ch347->ibuf[3 + offset] & 0x80) { // copy direction
+@@ -101,11 +102,13 @@ static void ch347_gpio_set(struct gpio_chip *chip, unsigned int offset, int valu
+ 	if (value) {
+ 		ch347->obuf[3 + offset] |= 0x08;
+ 	}
+-	gpio_transfer(ch347);
++	rc = gpio_transfer(ch347);
++	return rc < 0 ? rc : 0;
+ }
+ 
+-static void ch347_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask, unsigned long *bits)
++static int ch347_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask, unsigned long *bits)
+ {
++	int rc;
+ 	unsigned i;
+ 	struct ch347_gpio *ch347 = gpiochip_get_data(chip);
+ 	memset(ch347->obuf + 3, 0, 8); // clear all pins
+@@ -117,7 +120,8 @@ static void ch347_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask,
+ 			}
+ 		}
+ 	}
+-	gpio_transfer(ch347);
++	rc = gpio_transfer(ch347);
++	return rc < 0 ? rc : 0;
+ }
+ 
+ static int ch347_gpio_direction_input(struct gpio_chip *chip, unsigned int offset)
