@@ -3,7 +3,7 @@
 {
   # 与 home/chen/dev.nix 保持同步的 LSP/格式化器/工具集，
   # 但剔除桌面端专属（vscode、opencode-desktop、glmark2、pulseview）
-  # 以及重资源 SDK（zephyr-sdk、dotnet-sdk、wakatime-cli）。
+  # 以及重资源 SDK（dotnet-sdk、wakatime-cli）。
   # 由 headless 主机（O6N）使用；需要时桌面主机仍走 dev.nix。
   home.packages = with pkgs; [
     # ── Language servers ────────────────────────────────────────
@@ -115,7 +115,7 @@
     # ── 交叉编译（低优先级）────────────────────────────────────
     (lib.lowPrio pkgsCross.aarch64-multiplatform.buildPackages.gcc)
 
-    # ── 嵌入式 / SoC 工具（无 zephyr-sdk）─────────────────────
+    # ── 嵌入式 / SoC 工具）─────────────────────
     dtc
     ubootTools
     android-tools

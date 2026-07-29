@@ -1,9 +1,6 @@
 { pkgs, lib, inputs, ... }:
 
 let
-  zephyrPkgs = inputs.zephyr-nix.packages.${pkgs.stdenv.hostPlatform.system};
-  zephyrSdk = zephyrPkgs."sdkFull-1_0";
-
   vscodeRuntimeLibPath = pkgs.lib.makeLibraryPath [
     pkgs.stdenv.cc.cc.lib
     pkgs.icu
@@ -50,10 +47,6 @@ EOF
           chmod 600 "$WAKATIME_CFG"
         fi
   '';
-
-  home.sessionVariables = {
-    ZEPHYR_SDK_INSTALL_DIR = "${zephyrSdk}";
-  };
 
   home.packages = with pkgs; [
     # ── 编辑器 ─────────────────────────────────────────────────
@@ -192,10 +185,9 @@ EOF
     (lib.lowPrio pkgsCross.aarch64-multiplatform.buildPackages.gcc)
     #          nix shell nixpkgs#gcc-arm-embedded
 
-     # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
-     zephyrSdk
-     dtc # 设备树编译器
-     ubootTools # mkimage etc.
+    # ── 嵌入式 / SoC 工具 ─────────────────────────────────────────
+    dtc # 设备树编译器
+    ubootTools # mkimage etc.
     android-tools # adb, fastboot
     mtdutils
     binwalk

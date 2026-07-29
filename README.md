@@ -88,7 +88,7 @@ CI 只用 GitHub 托管 runner + 公开免费的 `DeterminateSystems/nix-install
 
 ## 开发工具
 
-`home/chen/dev.nix` 包含：VSCode（带 distrox 包装）、Zephyr SDK（嵌入式）、b4（patch 系列工具）、WakaTime。
+`home/chen/dev.nix` 包含：VSCode（带 distrox 包装）、b4（patch 系列工具）、WakaTime。
 
 `home/chen/opencode.nix` 管理 OpenCode 配置与 `auth.json` 注入；CLI/桌面包由 overlay 与 Home Manager 包列表引入。
 
