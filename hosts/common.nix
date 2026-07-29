@@ -99,13 +99,23 @@ in
       rm -f "$token_target"
     fi
   '';
-  # ── 交换分区 (zram) ─────────────────────────────────────────────
-  # 所有 host 共享：内存的 100% 用于 zram 压缩交换
+  # ── 分层交换：zram 前备 + 磁盘 swapfile 后备 ─────────────────────
+  # 关闭 zswap：与 zram 并存会造成双重压缩，浪费内存
+  boot.kernelParams = [ "zswap.enabled=0" ];
+
+  # 前备：zram 压缩内存交换（priority 5，内核优先使用）
   zramSwap = {
     enable = true;
     algorithm = "zstd";
     memoryPercent = 100;
   };
+
+  # 后备：swapspace 动态 swapfile 管理器
+  # 其空闲量计算为 MemAvailable + SwapFree，即 zram 有空位时不占磁盘；
+  # 仅当 zram 写满、内存压力上来才按需创建 swapfile，压力消退后删除归还空间。
+  # swapon 不带优先级 → 内核自动分配负优先级，低于 zram，天然形成后备层。
+  # 注意：swapfile 位于 /var/lib/swapspace（btrfs 下自动 NOCOW），该目录所在子卷不得做快照。
+  services.swapspace.enable = true;
 
   # ── 系统状态版本 ────────────────────────────────────────────────
   system.stateVersion = "25.11";

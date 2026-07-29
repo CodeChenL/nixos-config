@@ -52,7 +52,6 @@ in
     "splash"
     "intel_iommu=on"
     "nvidia_drm.modeset=1"
-    "zswap.enabled=0"
     "mitigations=off"
     "usbcore.autosuspend=0"
     "rtw88_core.disable_lps_deep=1"
