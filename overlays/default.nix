@@ -194,6 +194,7 @@ in
     github-copilot-cli
     llama-cpp-full
     natfrp-service
+    pgyvisitor
     radxa-linkr-debuggerctl
     rustty
     ;
