@@ -7,64 +7,172 @@
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      model = "openai/gpt-5.4";
+      model = "openai/gpt-5.6-sol";
       plugin = [
         "opencode-mem@latest"
         "oh-my-openagent@latest"
         "@mohak34/opencode-notifier@latest"
-        "opencode-wakatime@latest"
         "opencode-feishu-notifier@latest"
       ];
       autoupdate = false;
       provider = {
         "openai" = {
           options = {
-            baseURL = "http://192.168.2.131:8080/v1";
+            baseURL = "http://0.0.0.0:8080/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
-          };
-          "models" = {
-            "gpt-5.6-luna" = {
-              "variants" = {
-                "max" = {
-                  "reasoningEffort" = "max";
-                };
-              };
-            };
-            "gpt-5.6-terra" = {
-              "variants" = {
-                "max" = {
-                  "reasoningEffort" = "max";
-                };
-              };
-            };
-            "gpt-5.6-sol" = {
-              "variants" = {
-                "max" = {
-                  "reasoningEffort" = "max";
-                };
-              };
-            };
-          };
-        };
-        "xiaomi-token-plan-cn" = {
-          models = {
-            "mimo-v2.5-pro" = {
-              options = {
-                frequencyPenalty = 1;
-              };
-            };
-            "mimo-v2.5" = {
-              options = {
-                frequencyPenalty = 1;
-              };
-            };
           };
         };
         "deepseek" = {
           options = {
             baseURL = "http://192.168.2.131:8080/v1";
           };
+        };
+      };
+    };
+  };
+
+  # oh-my-openagent.json: 多代理模型配置
+  xdg.configFile."opencode/oh-my-openagent.json" = {
+    force = true;
+    text = builtins.toJSON {
+      "$schema" = "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json";
+      agents = {
+        oracle = {
+          model = "openai/gpt-5.6-sol";
+          reasoningEffort = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; reasoningEffort = "max"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        librarian = {
+          model = "openai/gpt-5.4-mini-fast";
+          reasoningEffort = "xhigh";
+          fallback_models = [
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+          ];
+        };
+        explore = {
+          model = "openai/gpt-5.4-mini-fast";
+          reasoningEffort = "xhigh";
+          fallback_models = [
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+          ];
+        };
+        multimodal-looker = {
+          model = "openai/gpt-5.6-sol";
+          reasoningEffort = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        metis = {
+          model = "kimi-for-coding/k3";
+          reasoningEffort = "max";
+          fallback_models = [
+            { model = "openai/gpt-5.6-sol"; variant = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; reasoningEffort = "max"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        momus = {
+          model = "openai/gpt-5.6-terra";
+          variant = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; reasoningEffort = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; reasoningEffort = "max"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        sisyphus-junior = {
+          model = "openai/gpt-5.6-terra";
+          reasoningEffort = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; reasoningEffort = "max"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+      };
+      categories = {
+        visual-engineering = {
+          model = "kimi-for-coding/k3";
+          reasoningEffort = "max";
+          fallback_models = [
+            { model = "openai/gpt-5.6-sol"; variant = "max"; }
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        ultrabrain = {
+          model = "openai/gpt-5.6-sol";
+          variant = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; variant = "max"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        deep = {
+          model = "openai/gpt-5.6-terra";
+          variant = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "openai/gpt-5.6-sol"; variant = "max"; }
+            { model = "deepseek/deepseek-v4-pro"; variant = "max"; }
+          ];
+        };
+        artistry = {
+          model = "openai/gpt-5.6-sol";
+          variant = "max";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+          ];
+        };
+        quick = {
+          model = "openai/gpt-5.4-mini";
+          reasoningEffort = "xhigh";
+          fallback_models = [
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+          ];
+        };
+        unspecified-low = {
+          model = "openai/gpt-5.6-luna";
+          variant = "max";
+          fallback_models = [
+            { model = "openai/gpt-5.6-sol"; variant = "max"; }
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+          ];
+        };
+        unspecified-high = {
+          model = "openai/gpt-5.6-luna";
+          variant = "max";
+          fallback_models = [
+            { model = "openai/gpt-5.6-sol"; variant = "max"; }
+            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
+            { model = "kimi-for-coding/k3"; variant = "max"; }
+          ];
+        };
+        writing = {
+          model = "minimax-cn-coding-plan/MiniMax-M3";
+          fallback_models = [
+            { model = "kimi-for-coding/k3"; }
+            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; variant = "high"; }
+            { model = "deepseek/deepseek-v4-pro"; variant = "max"; }
+          ];
         };
       };
     };
