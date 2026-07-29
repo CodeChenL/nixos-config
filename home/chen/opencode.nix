@@ -1,5 +1,32 @@
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  osConfig,
+  pkgs,
+  ...
+}:
 
+let
+  opencodeWebPasswordFile = "${config.xdg.stateHome}/opencode/web-password";
+  opencodeWebLauncher = pkgs.writeShellScript "opencode-web" ''
+    set -eu
+
+    password_file=${lib.escapeShellArg opencodeWebPasswordFile}
+    ${pkgs.coreutils}/bin/install -d -m 0700 "$(${pkgs.coreutils}/bin/dirname "$password_file")"
+    if [ ! -s "$password_file" ]; then
+      umask 077
+      ${pkgs.openssl}/bin/openssl rand -base64 32 > "$password_file"
+    fi
+    ${pkgs.coreutils}/bin/chmod 0600 "$password_file"
+
+    export OPENCODE_SERVER_PASSWORD="$(< "$password_file")"
+    exec ${pkgs.unstable.opencode}/bin/opencode web \
+      --hostname 0.0.0.0 \
+      --port 4096 \
+      --print-logs \
+      --log-level INFO
+  '';
+in
 {
   # ── OpenCode 声明式配置 ───────────────────────────────────────
   # opencode.json: 模型、插件、行为配置（不含密钥，密钥由 auth.json 管理）
@@ -510,5 +537,29 @@
         "injectProfile": true
       }
     '';
+  };
+
+  systemd.user.services.opencode-web = lib.mkIf (osConfig.networking.hostName == "ChenIdeaCentre") {
+    Unit = {
+      Description = "OpenCode Web";
+      After = [ "network-online.target" ];
+      Wants = [ "network-online.target" ];
+      StartLimitBurst = 5;
+      StartLimitIntervalSec = 60;
+    };
+
+    Service = {
+      ExecStart = opencodeWebLauncher;
+      Restart = "on-failure";
+      RestartSec = 5;
+      WorkingDirectory = "/";
+      Environment = [
+        "HOME=${config.home.homeDirectory}"
+        "OPENCODE_DISABLE_FFF=1"
+        "OPENCODE_SERVER_USERNAME=chen"
+      ];
+    };
+
+    Install.WantedBy = [ "default.target" ];
   };
 }
