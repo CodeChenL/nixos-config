@@ -19,6 +19,11 @@
     ./sub2api.nix
   ];
 
+  nix.settings = {
+    max-jobs = 2;
+    cores = 12;
+  };
+
   # ── 蒲公英访问端（异地组网）──────────────────────────────────────
   # 首次启用后需手动登录一次：sudo pgyvisitor login
   # 登录状态持久化在 /etc/oray/pgyvpn/，之后服务重启自动上线（autologin=true）
