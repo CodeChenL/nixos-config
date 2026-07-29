@@ -99,7 +99,6 @@
       jsonschema
       pyelftools
     ]))
-    master.pipx
     uv
 
     # ── Node.js ─────────────────────────────────────────────────

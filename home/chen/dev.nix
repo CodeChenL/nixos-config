@@ -156,9 +156,9 @@ EOF
        west
        jsonschema
        pyelftools
+       pipx
       ]))
     (lib.lowPrio python2)
-    master.pipx
     uv
 
     # ── Node.js ─────────────────────────────────────────────────
