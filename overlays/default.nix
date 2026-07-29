@@ -197,5 +197,6 @@ in
     pgyvisitor
     radxa-linkr-debuggerctl
     rustty
+    sub2api
     ;
 }
