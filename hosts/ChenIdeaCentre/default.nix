@@ -51,6 +51,7 @@
     inputs.edl-ng.packages.${pkgs.stdenv.hostPlatform.system}.edl-ng
     rkdeveloptool
     pyamlboot
+    flashrom
   ];
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────
