@@ -145,21 +145,21 @@ EOF
 
     # ── Python ──────────────────────────────────────────────────
      (python3.withPackages (ps: with ps; [
-       numpy
-       pyserial
-       pyusb
-       pyroute2
-       websockets
-       rich
-       pip
-       cryptography
-       west
-       jsonschema
-       pyelftools
-       pipx
+        numpy
+        pyserial
+        pyusb
+        pyroute2
+        websockets
+        rich
+        pip
+        cryptography
+        west
+        jsonschema
+        pyelftools
       ]))
-    (lib.lowPrio python2)
     uv
+    (pipx.overridePythonAttrs (old: { doCheck = false; }))
+    (lib.lowPrio python2)
 
     # ── Node.js ─────────────────────────────────────────────────
     nodejs # 已自带 npm 和 corepack
