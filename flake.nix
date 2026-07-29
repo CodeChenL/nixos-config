@@ -42,11 +42,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    zephyr-nix = {
-      url = "git+https://github.com/nix-community/zephyr-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     radxa-linkr-debugger = {
       url = "github:xzl01/agent-debugboard?ref=dev";
       inputs.nixpkgs.follows = "nixpkgs";
