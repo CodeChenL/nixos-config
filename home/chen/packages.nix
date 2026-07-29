@@ -4,11 +4,6 @@
   imports = [ ./packages-cli.nix ];
 
   home.packages = with pkgs; [
-    # AI Tools
-    llm-agents.claude-code
-    llm-agents.cc-switch-cli
-    trae-cn
-
     # ── 浏览器 ────────────────────────────────────────────────
     firefox
     microsoft-edge

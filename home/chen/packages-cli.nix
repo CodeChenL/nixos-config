@@ -3,7 +3,6 @@
 {
   home.packages = with pkgs; [
     # ── AI CLI ──────────────────────────────────────────────────
-    github-copilot-cli
     radxa-linkr-debuggerctl
     unstable.opencode
     poppler-utils
