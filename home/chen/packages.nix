@@ -1,7 +1,41 @@
-{ config, pkgs, inputs, osConfig ? { }, ... }:
+{ pkgs, inputs, osConfig ? { }, ... }:
 
 {
-  imports = [ ./packages-cli.nix ];
+  imports = [
+    ./packages-cli.nix
+    ./codex.nix
+    inputs.codex-desktop-linux.homeManagerModules.default
+  ];
+
+  # ── Codex Desktop（仅此桌面主机）──────────────────────────────────
+  programs.codexDesktopLinux = {
+    enable = false;
+    package = null;
+    cliPackage = pkgs.llm-agents.codex;
+    computerUseUi.enable = true;
+    remoteControl = {
+      enable = true;
+      package = pkgs.llm-agents.codex;
+      listen = "unix://";
+    };
+    remoteMobileControl.enable = false;
+    linuxFeatures = [
+      "appshots"
+      "codex-micro"
+      "codex-wrapper-updater"
+      "directory-only-working-tree-watch"
+      "frameless-titlebar"
+      "global-dictation"
+      "mcp-helper-reaper"
+      "node-repl-reaper"
+      "open-target-discovery"
+      "persistent-status-panel"
+      "pet-overlay"
+      "remote-control-ui"
+      "ssh-command-wrapper"
+      "ui-tweaks"
+    ];
+  };
 
   home.packages = with pkgs; [
     # ── 浏览器 ────────────────────────────────────────────────

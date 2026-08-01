@@ -1,5 +1,4 @@
 {
-  config,
   pkgs,
   inputs,
   ...
@@ -65,6 +64,13 @@
     rkdeveloptool
     pyamlboot
     flashrom
+  ];
+
+  # The Home Manager module cannot manage host udev policy. Keep only the
+  # upstream Codex Micro rule here without importing its NixOS module.
+  services.udev.packages = [
+    (pkgs.writeTextDir "lib/udev/rules.d/70-codex-micro.rules"
+      (builtins.readFile "${inputs.codex-desktop-linux}/linux-features/codex-micro/resources/70-codex-micro.rules"))
   ];
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────
