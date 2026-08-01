@@ -180,7 +180,7 @@ in
           ];
         };
         unspecified-high = {
-          model = "openai/gpt-5.6-luna";
+          model = "openai/gpt-5.6-terra";
           variant = "max";
           fallback_models = [
             { model = "openai/gpt-5.6-sol"; variant = "max"; }
