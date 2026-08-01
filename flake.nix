@@ -42,6 +42,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    codex-desktop-linux = {
+      url = "github:ilysenko/codex-desktop-linux/b48075d553475ba7674ea609fea806dc66913638";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     radxa-linkr-debugger = {
       url = "github:xzl01/agent-debugboard?ref=dev";
       inputs.nixpkgs.follows = "nixpkgs";
