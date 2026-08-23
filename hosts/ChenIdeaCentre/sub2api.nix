@@ -36,7 +36,7 @@ let
     JWT_SECRET=$(cat ${cfg.secretsDir}/jwt-secret)
 
     # Set PostgreSQL password (run as postgres user)
-    ${pkgs.sudo}/bin/sudo -u postgres ${config.services.postgresql.package}/bin/psql -c "ALTER USER sub2api WITH PASSWORD '$DB_PASSWORD';" || true
+    ${pkgs.sudo}/bin/sudo -u postgres ${config.services.postgresql.package}/bin/psql -c "ALTER USER sub2api WITH PASSWORD '$DB_PASSWORD';"
 
     # Write environment file for sub2api service
     cat > ${cfg.secretsDir}/env << EOF
@@ -140,8 +140,8 @@ in
     # Setup service：初始化 secrets 和数据库
     systemd.services.sub2api-setup = {
       description = "Sub2API Setup";
-      after = [ "postgresql.service" ];
-      wants = [ "postgresql.service" ];
+      after = [ "postgresql-setup.service" ];
+      requires = [ "postgresql-setup.service" ];
       before = [ "sub2api.service" ];
       serviceConfig = setupServiceConfig;
     };
@@ -150,7 +150,8 @@ in
     systemd.services.sub2api = {
       description = "Sub2API AI API Gateway";
       after = [ "postgresql.service" "redis.service" "sub2api-setup.service" ];
-      wants = [ "postgresql.service" "redis.service" "sub2api-setup.service" ];
+      wants = [ "postgresql.service" "redis.service" ];
+      requires = [ "sub2api-setup.service" ];
       wantedBy = [ "multi-user.target" ];
 
       path = [ pkgs.openssl ];
