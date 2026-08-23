@@ -1,4 +1,43 @@
-{ pkgs, inputs, osConfig ? { }, ... }:
+{ config, pkgs, lib, inputs, osConfig ? { }, ... }:
+
+let
+  dshPackage = pkgs.llm-agents.dsh;
+  dshHome = "${config.home.homeDirectory}/.dsh";
+  dshReconciler = ./dsh/reconcile.mjs;
+  dshSecretsDir = "${config.home.homeDirectory}/nixos-config/secrets/opencode";
+  dshAtomicWriteModule = "${dshPackage}/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js";
+  dshYamlModule = "${dshPackage}/lib/node_modules/@deepseek-ai/dsh/node_modules/yaml/dist/index.js";
+  dshSettingsJson = pkgs.writeText "dsh-settings.json" (builtins.toJSON {
+    "agent-default-model" = {
+      provider = "deepseek-official";
+      model = "deepseek-v4-flash";
+      reasoningEffort = "max";
+    };
+
+    "ui-conversation".busyEnter = "steer";
+
+    # Sub2API OpenAI passthrough must remain disabled for Responses API compatibility.
+    "llm-pi-ai".providers.openai = {
+      baseURL = "http://43.133.254.201:8082/v1";
+      apiKeyEnv = "OPENAI_API_KEY";
+    };
+
+    # Kimi For Coding（pi-ai 内置 catalog 路由，端点/模型随 catalog）
+    "llm-pi-ai".providers."kimi-coding" = {
+      apiKeyEnv = "KIMI_CODING_API_KEY";
+    };
+
+    # Xiaomi Token Plan (CN)
+    "llm-pi-ai".providers."xiaomi-token-plan-cn" = {
+      apiKeyEnv = "XIAOMI_TOKEN_PLAN_CN_API_KEY";
+    };
+
+    # MiniMax (CN)
+    "llm-pi-ai".providers."minimax-cn" = {
+      apiKeyEnv = "MINIMAX_CN_API_KEY";
+    };
+  });
+in
 
 {
   imports = [
@@ -36,6 +75,43 @@
       "ui-tweaks"
     ];
   };
+
+  systemd.user.services.dsh-web = {
+    Unit = {
+      Description = "DeepSeek Harness Web";
+      After = [ "network-online.target" ];
+      Wants = [ "network-online.target" ];
+      StartLimitBurst = 5;
+      StartLimitIntervalSec = 60;
+    };
+
+    Service = {
+      ExecStart = "${dshPackage}/bin/dsh web --host 127.0.0.1 --port 3080";
+      WorkingDirectory = config.home.homeDirectory;
+      Restart = "always";
+      RestartSec = 5;
+      TimeoutStartSec = 30;
+      TimeoutStopSec = 10;
+      KillMode = "control-group";
+      Environment = [
+        "HOME=${config.home.homeDirectory}"
+        "DSH_HOME=${dshHome}"
+      ];
+    };
+
+    Install.WantedBy = [ "default.target" ];
+  };
+
+  home.activation.dshConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ${pkgs.nodejs}/bin/node ${lib.escapeShellArgs [
+      "${dshReconciler}"
+      "--dsh-home" dshHome
+      "--settings-json" dshSettingsJson
+      "--secrets-dir" dshSecretsDir
+      "--atomic-write-module" dshAtomicWriteModule
+      "--yaml-module" dshYamlModule
+    ]}
+  '';
 
   home.packages = with pkgs; [
     # ── 浏览器 ────────────────────────────────────────────────

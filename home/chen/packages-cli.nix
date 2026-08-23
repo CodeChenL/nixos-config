@@ -5,6 +5,7 @@
     # ── AI CLI ──────────────────────────────────────────────────
     radxa-linkr-debuggerctl
     unstable.opencode
+    pkgs.llm-agents.dsh
     poppler-utils
     qpdf
     mupdf
