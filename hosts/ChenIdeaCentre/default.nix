@@ -67,11 +67,14 @@
     flashrom
   ];
 
-  # The Home Manager module cannot manage host udev policy. Keep only the
-  # upstream Codex Micro rule here without importing its NixOS module.
+  # Host udev policies must be installed by NixOS rather than Home Manager.
   services.udev.packages = [
     (pkgs.writeTextDir "lib/udev/rules.d/70-codex-micro.rules"
       (builtins.readFile "${inputs.codex-desktop-linux}/linux-features/codex-micro/resources/70-codex-micro.rules"))
+    (pkgs.writeTextDir "lib/udev/rules.d/71-webhid.rules" ''
+      # Allow the active local session to use WebHID devices.
+      ACTION!="remove", KERNEL=="hidraw*", SUBSYSTEM=="hidraw", MODE="0660", TAG+="uaccess"
+    '')
   ];
 
   # ── Steam（需要系统级 32 位库配置）────────────────────────────────
