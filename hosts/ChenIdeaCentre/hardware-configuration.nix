@@ -20,7 +20,7 @@
   # / — NVMe 上的 btrfs 顶层（迁移后的 NixOS 根分区）
   # 这样会直接复用 nvme0n1p2 现有顶层目录，/opt/work 会随根文件系统一起保留。
   fileSystems."/" = {
-    device = "/dev/disk/by-uuid/3e0e480a-17b6-40e0-ae94-f7004db9f92c";
+    device = "/dev/disk/by-uuid/d0558583-21b4-4edd-b08d-73e1649d2312";
     fsType = "btrfs";
     options = [
       "relatime" "ssd" "discard=async"
