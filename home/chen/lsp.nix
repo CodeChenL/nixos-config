@@ -36,7 +36,6 @@
     zls
     sourcekit-lsp
     (lib.lowPrio dart)
-    (julia.withPackages [ "LanguageServer" ])
 
     jdt-language-server
     kotlin-language-server

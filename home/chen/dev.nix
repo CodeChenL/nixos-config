@@ -91,7 +91,6 @@ EOF
     zls
     sourcekit-lsp
     (lib.lowPrio dart) # 避免与其他 LSP 包的顶层 LICENSE 文件冲突
-    (julia.withPackages [ "LanguageServer" ])
 
     # JVM / .NET
     jdt-language-server
