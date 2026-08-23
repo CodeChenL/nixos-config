@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, inputs, ... }:
 
 let
   kwallet5Compat = pkgs.runCommand "kwallet5-compat" { } ''
@@ -6,6 +6,8 @@ let
     ln -s ${lib.getBin pkgs.kdePackages.kwallet}/bin/kwalletd6 $out/bin/kwalletd5
     ln -s ${lib.getBin pkgs.kdePackages.kwallet}/bin/kwalletd6 $out/bin/kwalletd
   '';
+
+  vinputPackage = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in
 
 {
@@ -41,6 +43,18 @@ in
   };
   security.rtkit.enable = true;
 
+  systemd.user.services.vinput-daemon = {
+    description = "Fcitx5 VInput daemon";
+    after = [ "pipewire.service" ];
+    wantedBy = [ "default.target" ];
+
+    serviceConfig = {
+      Type = "dbus";
+      BusName = "org.fcitx.Vinput";
+      ExecStart = "${vinputPackage}/bin/vinput-daemon";
+    };
+  };
+
   # ── 蓝牙 ───────────────────────────────────────────────────────
   hardware.bluetooth = {
     enable = true;
@@ -63,6 +77,7 @@ in
       fcitx5-lua
       fcitx5-pinyin-moegirl
       fcitx5-pinyin-zhwiki
+      vinputPackage
     ];
     fcitx5.waylandFrontend = true;
   };
@@ -255,6 +270,7 @@ in
     kdePackages.yakuake
     kdePackages.wallpaper-engine-plugin
     kwallet5Compat
+    vinputPackage
   ];
 
   environment.sessionVariables = {
