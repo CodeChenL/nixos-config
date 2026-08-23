@@ -19,8 +19,9 @@
   ];
 
   nix.settings = {
-    max-jobs = 2;
-    cores = 12;
+    max-jobs = 1;
+    cores = 24;
+    max-substitution-jobs = 32;
   };
 
   # ── 蒲公英访问端（异地组网）──────────────────────────────────────

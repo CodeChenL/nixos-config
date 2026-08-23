@@ -63,16 +63,25 @@ in
         "chen"
       ];
       substituters = [
-        "https://mirrors.ustc.edu.cn/nix-channels/store"
-        "https://cache.nixos.org"
-        "https://nix-community.cachix.org"
-        "https://cache.numtide.com"
+        "https://mirrors.ustc.edu.cn/nix-channels/store?priority=10"
+        "https://mirror.sjtu.edu.cn/nix-channels/store?priority=20"
+        "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store?priority=30"
+        "https://nix-community.cachix.org?priority=50"
+        "https://cache.numtide.com?priority=60"
+        "https://nixpkgs-unfree.cachix.org?priority=70"
+        "https://cache.nixos-cuda.org?priority=80"
       ];
       trusted-public-keys = [
-        "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
         "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
         "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+        "nixpkgs-unfree.cachix.org-1:hqvoInulhbV4nJ9yJOEr+4wxhDV4xq2d1DK7S6Nj6rs="
+        "cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M="
       ];
+      connect-timeout = 10;
+      stalled-download-timeout = 30;
+      download-attempts = 3;
+      narinfo-cache-negative-ttl = 300;
+      fallback = false;
     };
     gc = {
       automatic = true;
