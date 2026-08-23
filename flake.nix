@@ -47,6 +47,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    fcitx5-vinput = {
+      url = "github:xifan2333/fcitx5-vinput";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     radxa-linkr-debugger = {
       url = "github:xzl01/agent-debugboard?ref=dev";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -143,7 +148,7 @@
         hostModulesPath = ./hosts/ChenAsahiLinux;
         homeConfig = import ./home/chen/asahi.nix;
         insecurePackages = [
-          "openclaw-2026.6.11"
+          "openclaw-2026.6.33"
           "python-2.7.18.12"
         ];
       };
