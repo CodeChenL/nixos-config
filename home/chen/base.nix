@@ -30,6 +30,8 @@
     source = pkgs.claude-skills;
     recursive = true;
   };
+  home.file.".agents/skills".source =
+    config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/.claude/skills";
   home.packages = [ pkgs.tcpdump ];
   xdg.enable = true;
 }
