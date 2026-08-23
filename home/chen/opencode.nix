@@ -45,7 +45,7 @@ in
       provider = {
         "openai" = {
           options = {
-            baseURL = "http://192.168.2.234:8080/v1";
+            baseURL = "http://43.133.254.201:8082/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
           };
