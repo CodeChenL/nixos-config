@@ -51,7 +51,13 @@
     pkgs.nur.repos.xddxdd.dingtalk
     feishu
     telegram-desktop
-    master.qq                         # linuxqq
+    (master.qq.overrideAttrs (_: {
+      version = "3.2.32-2026-07-30";
+      src = fetchurl {
+        url = "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/c97651b2/QQ_3.2.32_260730_amd64_01.deb";
+        hash = "sha256-ga4rhULvUxH8cuz1PJpSOSPINFacew2lLgv0Nguctfk=";
+      };
+    })) # linuxqq
     unstable.wechat                 # 微信
     element-desktop
     thunderbird
