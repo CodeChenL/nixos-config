@@ -43,7 +43,7 @@
     };
 
     codex-desktop-linux = {
-      url = "github:ilysenko/codex-desktop-linux/b48075d553475ba7674ea609fea806dc66913638";
+      url = "github:ilysenko/codex-desktop-linux/0458e45cee3389f84de9dcb32586d1188513436e";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
