@@ -48,7 +48,7 @@ in
 
   # ── Codex Desktop（仅此桌面主机）──────────────────────────────────
   programs.codexDesktopLinux = {
-    enable = false;
+    enable = true;
     package = null;
     cliPackage = pkgs.llm-agents.codex;
     computerUseUi.enable = true;
