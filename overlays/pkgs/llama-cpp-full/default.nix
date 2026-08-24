@@ -42,7 +42,8 @@ in
       export CMAKE_PREFIX_PATH="${final.openvino}/runtime/cmake:${final.onetbb.dev}/lib/cmake/TBB''${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
     '';
 
-    # Fix postInstall: rpc-server renamed to ggml-rpc-server in newer versions
+    # Keep the legacy command name without copying a build-tree binary whose
+    # RPATH has not gone through CMake's install rewrite.
     postInstall = ''
       mkdir -p $out/include
       cp $src/include/llama.h $out/include/
@@ -51,10 +52,15 @@ in
       installShellCompletion --cmd llama-server --bash <($out/bin/llama-server --completion-bash)
     ''
     + final.lib.optionalString true ''
-      if [ -f bin/ggml-rpc-server ]; then
-        cp bin/ggml-rpc-server $out/bin/llama-rpc-server
-      elif [ -f bin/rpc-server ]; then
-        cp bin/rpc-server $out/bin/llama-rpc-server
+      if [ ! -e $out/bin/llama-rpc-server ]; then
+        if [ -x $out/bin/ggml-rpc-server ]; then
+          ln -s ggml-rpc-server $out/bin/llama-rpc-server
+        elif [ -x $out/bin/rpc-server ]; then
+          ln -s rpc-server $out/bin/llama-rpc-server
+        else
+          echo "error: installed llama.cpp RPC server not found" >&2
+          exit 1
+        fi
       fi
     '';
 
