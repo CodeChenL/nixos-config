@@ -5,6 +5,7 @@ let
     model_provider = "OpenAI"
     model = "gpt-5.6-sol"
     review_model = "gpt-5.6-sol"
+    model_context_window = 922000 # OpenAI max input; Codex 0.149.1 may clamp to its bundled catalog ceiling.
     model_reasoning_effort = "max"
     personality = "pragmatic"
     disable_response_storage = true
@@ -12,20 +13,22 @@ let
     windows_wsl_setup_acknowledged = true
     cli_auth_credentials_store = "file"
     sandbox_mode = "workspace-write"
+    web_search = "live"
+    model_verbosity = "high"
+    model_reasoning_summary = "detailed"
 
     [model_providers.OpenAI]
     name = "OpenAI"
-    base_url = "http://192.168.2.234:8080/v1" # Trusted endpoint by explicit user request; API credentials travel in cleartext.
+    base_url = "http://43.133.254.201:8082/v1" # Trusted endpoint by explicit user request; API credentials travel in cleartext.
     wire_api = "responses"
     supports_websockets = true
-    requires_openai_auth = false
+    requires_openai_auth = true
     http_headers = { "x-openai-actor-authorization" = "local-image-extension" }
 
     [sandbox_workspace_write]
     network_access = true
 
     [features]
-    responses_websockets_v2 = true
     goals = true
     js_repl = false
     memories = true
@@ -42,7 +45,7 @@ let
     avatar-overlay-mascot-width-px = 80
     open-link-in-target-preference = "external-browser"
     open-local-url-in-target-preference = "external-browser"
-    git-pull-request-merge-method = "squash"
+    git-pull-request-merge-method = "merge"
 
     [memories]
     generate_memories = true
