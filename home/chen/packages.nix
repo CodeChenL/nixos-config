@@ -1,6 +1,41 @@
 { config, pkgs, lib, inputs, osConfig ? { }, ... }:
 
 let
+  codexDesktopLinuxFeatures = [
+    "appshots"
+    "api-key-model-visibility"
+    "api-key-service-tier"
+    "codex-micro"
+    "codex-wrapper-updater"
+    "directory-only-working-tree-watch"
+    "frameless-titlebar"
+    "global-dictation"
+    "mcp-helper-reaper"
+    "node-repl-reaper"
+    "open-target-discovery"
+    "persistent-status-panel"
+    "pet-overlay"
+    "remote-control-ui"
+    "ssh-command-wrapper"
+    "ui-tweaks"
+  ];
+  # Keep the authored ZIP in the flake so theme changes are reproducible and
+  # do not depend on a runtime DreamSkin download/import. The package still
+  # declares Windows/macOS, so the Linux adapter keeps the explicit mismatch
+  # override below instead of mutating the upstream manifest.
+  oneLastKissDreamSkinPackage = ./codex-themes/one-last-kiss-ayanami-0.0.2.zip;
+  codexDesktopPackage = pkgs."codex-desktop-api-key" {
+    linuxFeatureIds = codexDesktopLinuxFeatures;
+    enableComputerUseUi = true;
+    # Prefer the upstream Linux feature descriptors; opt into the direct
+    # app-initial patch only for a provider with an unusable model catalog.
+    enableCustomApiKeyUiPatch = false;
+    # Unlock only the existing upstream Ultra catalog/slider gates without
+    # enabling the broader API-key UI patch.
+    enableApiKeyUltraUiPatch = true;
+    dreamSkinThemePackage = oneLastKissDreamSkinPackage;
+    dreamSkinAllowPlatformMismatch = true;
+  };
   dshPackage = pkgs.llm-agents.dsh;
   dshHome = "${config.home.homeDirectory}/.dsh";
   dshReconciler = ./dsh/reconcile.mjs;
@@ -49,7 +84,7 @@ in
   # ── Codex Desktop（仅此桌面主机）──────────────────────────────────
   programs.codexDesktopLinux = {
     enable = true;
-    package = null;
+    package = codexDesktopPackage;
     cliPackage = pkgs.llm-agents.codex;
     computerUseUi.enable = true;
     remoteControl = {
@@ -58,22 +93,7 @@ in
       listen = "unix://";
     };
     remoteMobileControl.enable = false;
-    linuxFeatures = [
-      "appshots"
-      "codex-micro"
-      "codex-wrapper-updater"
-      "directory-only-working-tree-watch"
-      "frameless-titlebar"
-      "global-dictation"
-      "mcp-helper-reaper"
-      "node-repl-reaper"
-      "open-target-discovery"
-      "persistent-status-panel"
-      "pet-overlay"
-      "remote-control-ui"
-      "ssh-command-wrapper"
-      "ui-tweaks"
-    ];
+    linuxFeatures = codexDesktopLinuxFeatures;
   };
 
   systemd.user.services.dsh-web = {
