@@ -189,6 +189,7 @@ in
   };
 
   inherit (userPackages)
+    codex-desktop-api-key
     freedownloadmanager
     trae-cn
     github-copilot-cli
