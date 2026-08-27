@@ -47,6 +47,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # OpenCode's provider/model metadata source. Codex catalogs project the
+    # locked TOML entries from this input into Codex's model-info JSON shape.
+    models-dev = {
+      url = "github:anomalyco/models.dev/81d3fbee80d802dbd24876a9e4372fae6ade386a";
+      flake = false;
+    };
+
     fcitx5-vinput = {
       url = "github:xifan2333/fcitx5-vinput";
       inputs.nixpkgs.follows = "nixpkgs";
