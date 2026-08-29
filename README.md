@@ -8,6 +8,7 @@ ChenIdeaCentre 维护的 NixOS 多主机配置，使用 Nix Flakes + home-manage
 | --- | --- | --- |
 | `ChenIdeaCentre` | x86_64-linux | 主桌面，KDE Plasma 6 Wayland + NVIDIA |
 | `ChenWSL` | x86_64-linux | WSL2 中的 NixOS |
+| `ChenAliyun` | x86_64-linux | 阿里云轻量服务器，Btrfs 全盘 + Sub2API 预留 |
 | `ChenRadxaOrionO6N` | aarch64-linux | Radxa Orion O6N (CIX Sky1)，运行 OpenWrt 容器 |
 | `ChenAsahiLinux` | aarch64-linux | Apple M1 Mac mini，Asahi Linux + OpenClaw 网关 |
 
@@ -23,23 +24,24 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
 .
 ├── flake.nix              # 入口：inputs、mkHost helper、多台主机定义
 ├── hosts/
-│   ├── common.nix         # 三台主机共享的 Nix 设置、用户、基础包
+│   ├── common.nix         # 四台主机共享的 Nix 设置、用户、基础包
 │   ├── ChenIdeaCentre/    # 主桌面
+│   ├── Aliyun/            # 阿里云轻量服务器（Btrfs + Sub2API）
 │   ├── ChenWSL/           # WSL2 主机
 │   ├── ChenRadxaOrionO6N/ # Radxa 板
 │       └── openwrt/       # OpenWrt 容器：UCI 配置 + 启动脚本
 │   └── ChenAsahiLinux/    # Apple M1 Mac mini / Asahi Linux
 ├── home/chen/             # home-manager：用户环境
-│   ├── lsp.nix           # O6N 用的纯 LSP/工具集（不含桌面专属）
-│   └── dev.nix           # 桌面主机的 LSP + 桌面工具 + 重资源 SDK
+│   ├── lsp.nix            # LSP/工具集（dev 与 headless 共享）
+│   └── dev.nix            # 桌面主机的 LSP + 桌面工具 + 重资源 SDK
 ├── overlays/              # 自定义 packages
 │   ├── default.nix        # 入口：unstable/master/NUR 通道 + 包聚合
 │   ├── apply-debian-patches.nix
 │   ├── linux-cix-main/    # 交叉编译的内核 overlay
 │   ├── cix-*/             # CIX SoC 专用 VPU/NPU/固件 overlay
-│   └── pkgs/              # 业务包（freedownloadmanager、trae-cn 等）
-├── skills/                # AI Agent skills（ipkvm、lore-mail、radxa-*）
-├── docs/                  # 故障排查与 bringup 笔记
+│   └── pkgs/              # 业务包（freedownloadmanager 等）
+├── skills/                # AI Agent skills（lore-mail、radxa-*）
+├── docs/                  # 当前安装与运维 runbook
 └── .github/workflows/     # CI：flake check + overlay 构建
 ```
 
@@ -47,15 +49,15 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
 
 新增包约定：
 
-1. 在 `overlays/pkgs/<name>/default.nix` 中按以下签名写包定义：
+1. 在 `overlays/pkgs/<name>/default.nix` 中直接返回包或包函数：
    ```nix
    { inputs, final, prev }:
-   { <name> = final.callPackage ({ lib, ... }: stdenv.mkDerivation { ... }) { }; }
+   final.callPackage ({ lib, ... }: stdenv.mkDerivation { ... }) { }
    ```
-2. 包会被 `overlays/default.nix` 的 `collectPkgs` 自动发现、加入 overlay。
+2. 在 `overlays/default.nix` 中显式加入 `<name> = import ./pkgs/<name> { inherit inputs final prev; };`。
 3. 包定义放在 `overlays/pkgs/<name>/default.nix`；少数共用 patch/lockfile 仍可放在 `overlays/` 顶层，由对应包显式引用。
 
-如果包依赖 `inputs.*`（如 radxa-linkr-debuggerctl），仍可在 `overlays/pkgs/<name>/default.nix` 中访问 `inputs`。
+如果包依赖 `inputs.*`（如 radxa-linkr-debuggerctl），仍可在包定义或 `overlays/default.nix` 中访问 `inputs`。
 
 ## 密钥管理
 
@@ -88,13 +90,13 @@ CI 只用 GitHub 托管 runner + 公开免费的 `DeterminateSystems/nix-install
 
 ## 开发工具
 
-`home/chen/dev.nix` 包含：VSCode（带 distrox 包装）、b4（patch 系列工具）、WakaTime。
+`home/chen/dev.nix` 包含：VSCode（带运行时库包装）、b4（patch 系列工具）、WakaTime。
 
-`home/chen/opencode.nix` 管理 OpenCode 配置与 `auth.json` 注入；CLI/桌面包由 overlay 与 Home Manager 包列表引入。
+`home/chen/opencode.nix` 管理 OpenCode 配置与 `auth.json` 注入；CLI 由 `home/chen/packages-cli.nix` 的 `unstable.opencode` 引入。
 
 ## 故障排查
 
-- 启动失败：参考 `docs/o6n-bringup.md`（Radxa 板 bringup runbook）
-- OpenWrt 容器：`hosts/ChenRadxaOrionO6N/openwrt-container.nix` 的 systemd 单元 + `o6n-openwrt-reconcile --help`
-- 内核/CIX 驱动：见 `docs/session-lessons.md` 中的相关章节
+- O6N/OpenWrt 网络、部署与恢复：参考 `hosts/ChenRadxaOrionO6N/openwrt/README.md`
+- Aliyun 运维/迁移/回滚：参考 `docs/chen-aliyun-ops-runbook.md`
+- OpenWrt 容器实现：`hosts/ChenRadxaOrionO6N/openwrt-container.nix` 中的 ensure/reconcile systemd 单元
 - skill 工作流：每个 skill 自带 `SKILL.md`（`skills/*/SKILL.md`）
