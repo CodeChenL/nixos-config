@@ -17,7 +17,7 @@ jobs:
         include:
           - system: x86_64-linux
             host: ChenIdeaCentre
-            packages: "natfrp-service freedownloadmanager trae-cn github-copilot-cli opencode-desktop pgyvisitor"
+            packages: "natfrp-service freedownloadmanager pgyvisitor"
           - system: aarch64-linux
             host: ChenRadxaOrionO6N
             packages: "natfrp-service"

@@ -49,36 +49,17 @@ jobs:
 
       # --dry-run 让 Nix 解析所有依赖、暴露缺失输入或语法错误，
       # 但不实际下载/构建 store paths（避免消耗 CI 时间和磁盘）
-      - name: Dry-build ChenIdeaCentre
+      - name: Dry-build NixOS hosts
         run: |
-          nix build \
-            .#nixosConfigurations.ChenIdeaCentre.config.system.build.toplevel \
-            --dry-run
-
-      - name: Dry-build ChenWSL
-        run: |
-          nix build \
-            .#nixosConfigurations.ChenWSL.config.system.build.toplevel \
-            --dry-run
-
-      - name: Dry-build ChenRadxaOrionO6N
-        run: |
-          nix build \
-            .#nixosConfigurations.ChenRadxaOrionO6N.config.system.build.toplevel \
-            --dry-run
-
-      - name: Dry-build ChenAsahiLinux
-        run: |
-          nix build \
-            .#nixosConfigurations.ChenAsahiLinux.config.system.build.toplevel \
-            --dry-run
+          set -e
+          for host in ChenIdeaCentre ChenWSL Aliyun ChenRadxaOrionO6N ChenAsahiLinux; do
+            echo "=== Dry-building $host ==="
+            nix build \
+              ".#nixosConfigurations.$host.config.system.build.toplevel" \
+              --dry-run
+          done
 
       - name: Lint shell scripts
         uses: ludeeus/action-shellcheck@2.0.0
         with:
-          scandir: ./scripts
-          additional_files: |
-            skills/*/scripts/*.sh
-            hosts/ChenRadxaOrionO6N/openwrt/scripts/*.sh
-          ignore_paths: |
-            skills/*/scripts/*.py
+          scandir: ./skills
