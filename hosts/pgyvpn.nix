@@ -7,6 +7,7 @@
 
 let
   cfg = config.services.pgyvpn;
+  package = pkgs.pgyvisitor;
 
   # 以下路径硬编码在闭源二进制中（strings 可验证），故意不做成 option：
   #   pgyvpn_svr  内部固定写 /etc/oray/pgyvpn（orayboxvpn_status.dat 等状态文件）
@@ -16,19 +17,12 @@ let
   logDir = "/var/log/oray/pgyvpn";
 in
 {
-  options.services.pgyvpn = {
-    enable = lib.mkEnableOption "贝锐蒲公英访问端（PgyVisitor）SD-WAN 异地组网服务";
-
-    package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.pgyvisitor;
-      description = "pgyvisitor 包（见 overlays/pkgs/pgyvisitor）。";
-    };
-  };
+  options.services.pgyvpn.enable =
+    lib.mkEnableOption "贝锐蒲公英访问端（PgyVisitor）SD-WAN 异地组网服务";
 
   config = lib.mkIf cfg.enable {
     # pgyvisitor CLI 全局可用（管理操作需 root：sudo pgyvisitor login）
-    environment.systemPackages = [ cfg.package ];
+    environment.systemPackages = [ package ];
 
     # 创建 oray_vnc 虚拟网卡依赖 tun 设备
     boot.kernelModules = [ "tun" ];
@@ -40,22 +34,22 @@ in
     #   - tmpfiles：boot 早期兜底重建（switch 时 NixOS 只对 /dev /proc /sys /run 跑 tmpfiles）
     system.activationScripts.pgyvpn-compat = ''
       mkdir -p /usr/share /usr/sbin ${stateDir} ${logDir}
-      ln -sfn ${cfg.package}/share/pgyvpn /usr/share/pgyvpn
-      ln -sfn ${cfg.package}/sbin/pgystarnet /usr/sbin/pgystarnet
-      ln -sfn ${cfg.package}/sbin/pgyvpn_svr /usr/sbin/pgyvpn_svr
-      ln -sfn ${cfg.package}/bin/pgyvisitor /usr/sbin/pgyvisitor
+      ln -sfn ${package}/share/pgyvpn /usr/share/pgyvpn
+      ln -sfn ${package}/sbin/pgystarnet /usr/sbin/pgystarnet
+      ln -sfn ${package}/sbin/pgyvpn_svr /usr/sbin/pgyvpn_svr
+      ln -sfn ${package}/bin/pgyvisitor /usr/sbin/pgyvisitor
     '';
 
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0755 root root -"
       "d ${logDir} 0755 root root -"
       # 语言资源（缺失时 pgyvisitor/pgyvpn_svr 报 "load language fail!" 退出）
-      "L+ /usr/share/pgyvpn - - - - ${cfg.package}/share/pgyvpn"
+      "L+ /usr/share/pgyvpn - - - - ${package}/share/pgyvpn"
       # pgyvpn_svr 以绝对路径 exec /usr/sbin/pgystarnet（P2P 打洞辅助进程）
-      "L+ /usr/sbin/pgystarnet - - - - ${cfg.package}/sbin/pgystarnet"
+      "L+ /usr/sbin/pgystarnet - - - - ${package}/sbin/pgystarnet"
       # 与官方文档/脚本路径保持一致的便捷链接
-      "L+ /usr/sbin/pgyvisitor - - - - ${cfg.package}/bin/pgyvisitor"
-      "L+ /usr/sbin/pgyvpn_svr - - - - ${cfg.package}/sbin/pgyvpn_svr"
+      "L+ /usr/sbin/pgyvisitor - - - - ${package}/bin/pgyvisitor"
+      "L+ /usr/sbin/pgyvpn_svr - - - - ${package}/sbin/pgyvpn_svr"
     ];
 
     systemd.services.pgyvpn = {
@@ -85,7 +79,7 @@ in
       preStart = ''
         mkdir -p ${stateDir} ${logDir}
         if [ ! -f ${stateDir}/config.ini ]; then
-          install -m 0644 ${cfg.package}/share/pgyvpn/config.ini.example ${stateDir}/config.ini
+          install -m 0644 ${package}/share/pgyvpn/config.ini.example ${stateDir}/config.ini
         fi
 
         # pgyvpn_svr 以 /tmp/pgyvpnsvr*_mutex 文件存在性做单实例检查（硬编码路径），
@@ -97,7 +91,7 @@ in
       serviceConfig = {
         Type = "simple";
         # 参数对齐官方 pgyvpn_monitor 脚本，去掉 -d（daemonize），前台运行交由 systemd 托管
-        ExecStart = "${cfg.package}/sbin/pgyvpn_svr -R -A --mlink -t -i pgy-api.oray.com -K 255.255.255.255 -p ${logDir}/pgyvpn_svr -f ${stateDir}/config.ini --logmask 0xFFFFFFF7 --norpceventnotify";
+        ExecStart = "${package}/sbin/pgyvpn_svr -R -A --mlink -t -i pgy-api.oray.com -K 255.255.255.255 -p ${logDir}/pgyvpn_svr -f ${stateDir}/config.ini --logmask 0xFFFFFFF7 --norpceventnotify";
         Restart = "always";
         RestartSec = 30;
       };
