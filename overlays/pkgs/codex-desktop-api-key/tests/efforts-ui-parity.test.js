@@ -8,7 +8,6 @@ const test = require("node:test");
 const moduleRoot = path.resolve(__dirname, "..");
 const helperPath = path.join(moduleRoot, "api-key-ultra-gates.js");
 const unlockPath = path.join(moduleRoot, "unlock-api-key-ultra.js");
-const customPath = path.join(moduleRoot, "patch-desktop-app.js");
 
 const fixture = `
 "use strict";
@@ -42,13 +41,10 @@ function model(efforts) {
 }
 
 test("production patches do not invent provider efforts", () => {
-  const sources = [fs.readFileSync(unlockPath, "utf8"), fs.readFileSync(customPath, "utf8")];
-  for (const source of sources) {
-    assert.doesNotMatch(source, /Ultra reasoning depth/u);
-    assert.doesNotMatch(source, /codexLinuxApiKeyUltraEnabledEffortFilter/u);
-    assert.match(source, /CODEX_API_KEY_ULTRA_GATES/u);
-  }
-  assert.doesNotMatch(sources[1], /\[`low`,`medium`,`high`,`xhigh`,`max`,`ultra`\]/u);
+  const source = fs.readFileSync(unlockPath, "utf8");
+  assert.doesNotMatch(source, /Ultra reasoning depth/u);
+  assert.doesNotMatch(source, /codexLinuxApiKeyUltraEnabledEffortFilter/u);
+  assert.match(source, /CODEX_API_KEY_ULTRA_GATES/u);
 });
 
 test("API-key Efforts follow the OAuth entitlement, catalog, and enabled-set path", () => {

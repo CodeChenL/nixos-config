@@ -7,42 +7,39 @@ const test = require("node:test");
 
 const patchPath = path.resolve(__dirname, "..", "dreamskin-patch.js");
 
-function nativeTabCss() {
-  const source = fs.readFileSync(patchPath, "utf8");
-  const marker = "const linuxNativeTabCss = `";
-  const start = source.indexOf(marker);
-  const end = source.indexOf("`;\n  const combinedCss", start);
-  assert.notEqual(start, -1, "linuxNativeTabCss start marker missing");
-  assert.notEqual(end, -1, "linuxNativeTabCss end marker missing");
-  return source.slice(start + marker.length, end);
+function patchSource() {
+  return fs.readFileSync(patchPath, "utf8");
 }
 
-test("Linux tab bridge preserves native stacking and surface paint", () => {
-  const css = nativeTabCss();
-  assert.doesNotMatch(css, /\b(?:position|z-index)\s*:/u);
-  assert.doesNotMatch(css, /header[^{}]*\{[^}]*z-index/su);
-  assert.doesNotMatch(
-    css,
-    /\[data-app-shell-tabs\][^{]*\{[^}]*(?:position|z-index|background(?:-color)?)\s*:/su,
-  );
+test("Linux only lets right-panel tabs paint through the frameless header", () => {
+  const source = patchSource();
+  const tick = String.fromCharCode(96);
+  assert.doesNotMatch(source, /linuxNativeTabCss/u);
+  assert.ok(source.includes(
+    "const combinedCss = " + tick +
+      "${coreCss}\\n${safeCss.runtimeSource}\\n${linuxFramelessHeaderCss}\\n" + tick + ";",
+  ));
+  assert.match(source, /main:is\([\s\S]*?:has\(\[data-app-shell-tab-strip-controller="right"\]\) > header:is\(/u);
+  assert.match(source, /background:\s*transparent\s*!important/u);
+  assert.match(source, /backdrop-filter:\s*none\s*!important/u);
+  assert.doesNotMatch(source, /data-app-shell-tab-close-button/u);
+  assert.doesNotMatch(source, /(?:visibility|opacity|color):[^;]*!important/u);
+  assert.ok(source.includes(
+    'linuxCompatibilityExceptions: ["right-panel-tabs-header-paint-through"]',
+  ));
 });
 
-test("right-panel tab descendants and sibling actions inherit DreamSkin colors", () => {
-  const css = nativeTabCss();
-  assert.match(css, /\[data-app-shell-tabs\]\s*>\s*:has\(\[data-app-shell-tab-strip-controller\]\)/u);
-  assert.match(css, /:is\(button, button \*\)/u);
-  assert.match(css, /\[data-app-shell-tab-close-button\]\s*\*/u);
-  assert.match(css, /color:\s*inherit\s*!important/u);
-  assert.match(css, /color:\s*var\(--ds-muted\)\s*!important/u);
+test("Linux overrides only the current home-suggestions selector drift", () => {
+  const source = patchSource();
+  const overrides = source.match(/const linuxSelectorOverrides = \{([\s\S]*?)\n  \};/u)?.[1];
+  assert.ok(overrides, "linuxSelectorOverrides block missing");
+  assert.match(overrides, /"home-suggestions"/u);
+  assert.doesNotMatch(overrides, /"(?:left-panel|message)"/u);
+  assert.ok(source.includes('linuxSelectorOverrides: ["home-suggestions"]'));
 });
 
-test("open right-panel tabs are not painted over by the fixed header surface", () => {
-  const css = nativeTabCss();
-  assert.match(css, /@layer\s+dreamskin-accessibility\s*\{/u);
-  assert.match(
-    css,
-    /main:is\([^)]*\):has\(\[data-app-shell-tab-strip-controller="right"\]\)\s*>\s*header:is\(/u,
-  );
-  assert.match(css, /background:\s*transparent\s*!important/u);
-  assert.match(css, /backdrop-filter:\s*none\s*!important/u);
+test("Linux composer mapping follows the upstream visual-surface selector", () => {
+  const source = patchSource();
+  assert.doesNotMatch(source, /^\s*"composer-chrome":/mu);
+  assert.match(source, /selector:\s*linuxSelectorOverrides\[entry\.key\]\s*\?\?\s*entry\.selector/u);
 });

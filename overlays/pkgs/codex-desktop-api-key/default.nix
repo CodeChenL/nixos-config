@@ -2,7 +2,6 @@
 
 let
   system = prev.stdenv.hostPlatform.system;
-  patchScript = ./patch-desktop-app.js;
   ultraPatchScript = ./unlock-api-key-ultra.js;
   apiKeyUltraGatesScript = ./api-key-ultra-gates.js;
   bundleSourceMapScript = ./bundle-source-map.js;
@@ -10,8 +9,8 @@ let
   dreamSkinSource = final.fetchFromGitHub {
     owner = "Fei-Away";
     repo = "Codex-Dream-Skin";
-    rev = "95423d849f74b9824db2ba0c1121cc7a13b56d10";
-    hash = "sha256-b+JR9l8XCoSMYqCUwmmCYXOFuxu8C8O24ZTvVsu37Jo=";
+    rev = "e0341de41e3a4490194bf1fa3e7f3735ed6103df";
+    hash = "sha256-nrE3Zs9huPrpx52eYUpwcxKKnoywj6Ckjc3J/unVOxA=";
   };
 in
 {
@@ -21,10 +20,6 @@ in
     {
       linuxFeatureIds ? [ ],
       enableComputerUseUi ? false,
-      # Keep the upstream Linux feature path as the default. The direct
-      # app-initial bundle patch remains available as an explicit escape hatch
-      # for providers whose catalog cannot describe their reasoning options.
-      enableCustomApiKeyUiPatch ? false,
       # Small opt-in escape hatch: expose the existing upstream Ultra candidate
       # for API-key hosts; the provider still decides whether Ultra is accepted.
       enableApiKeyUltraUiPatch ? false,
@@ -80,19 +75,48 @@ in
         install -Dm0644 "${dreamSkinSource}/LICENSE" \
           "$app/.codex-linux/dreamskin-runtime-LICENSE"
       '';
-      apiKeyUiInstall = final.lib.optionalString enableCustomApiKeyUiPatch ''
-        CODEX_API_KEY_ULTRA_GATES=${apiKeyUltraGatesScript} \
-          CODEX_BUNDLE_SOURCE_MAP=${bundleSourceMapScript} \
-          ${final.nodejs}/bin/node ${patchScript} "$extracted"
-        install -Dm0644 "$extracted/.codex-linux/api-key-ui-patch.json" \
-          "$app/.codex-linux/api-key-ui-patch.json"
-      '';
       apiKeyUltraInstall = final.lib.optionalString enableApiKeyUltraUiPatch ''
         CODEX_API_KEY_ULTRA_GATES=${apiKeyUltraGatesScript} \
           CODEX_BUNDLE_SOURCE_MAP=${bundleSourceMapScript} \
           ${final.nodejs}/bin/node ${ultraPatchScript} "$extracted"
         install -Dm0644 "$extracted/.codex-linux/api-key-ultra-patch.json" \
           "$app/.codex-linux/api-key-ultra-patch.json"
+      '';
+      watchboundEnabled = final.lib.elem "directory-only-working-tree-watch" featureIds;
+      watchboundDigestUpdate = final.lib.optionalString watchboundEnabled ''
+        set -- "$extracted"/node_modules/@gadicc/watchbound-node-linux-*-gnu/package.json
+        if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+          echo "Expected exactly one Watchbound native package" >&2
+          exit 1
+        fi
+        watchbound_package="$1"
+        watchbound_digest="$(${final.nodejs}/bin/node - "$watchbound_package" <<'NODE'
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const packagePath = process.argv[2];
+const descriptor = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+const binary = descriptor.watchbound?.binary;
+if (typeof binary !== "string" || path.basename(binary) !== binary) {
+  throw new Error("Invalid Watchbound native binary declaration");
+}
+const digest = crypto.createHash("sha256")
+  .update(fs.readFileSync(path.join(path.dirname(packagePath), binary)))
+  .digest("hex");
+descriptor.watchbound.nativeSha256 = digest;
+fs.writeFileSync(packagePath, JSON.stringify(descriptor, null, 2) + "\n");
+process.stdout.write(digest);
+NODE
+        )"
+      '';
+      watchboundDigestCheck = final.lib.optionalString watchboundEnabled ''
+        set -- "$rebuilt.unpacked"/node_modules/@gadicc/watchbound-node-linux-*-gnu/*.node
+        if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+          echo "Expected exactly one rebuilt Watchbound native module" >&2
+          exit 1
+        fi
+        printf '%s  %s\n' "$watchbound_digest" "$1" | ${final.coreutils}/bin/sha256sum -c -
       '';
     in
       base.overrideAttrs (old: {
@@ -112,16 +136,17 @@ in
           # corresponding app.asar.unpacked directory and header flags.
           cp -a "$unpacked/." "$extracted/"
         fi
-        ${apiKeyUiInstall}
         ${apiKeyUltraInstall}
         ${dreamSkinInstall}
         rm -f "$extracted/.codex-linux/api-key-ui-patch.json" \
           "$extracted/.codex-linux/api-key-ultra-patch.json" \
           "$extracted/.codex-linux/dreamskin-native-patch.json"
+        ${watchboundDigestUpdate}
         (cd "$extracted" && find . -type f -printf '%P\n' | LC_ALL=C sort) > "$ordering"
         ${final.asar}/bin/asar pack "$extracted" "$rebuilt" \
           --ordering "$ordering" \
           --unpack "{*.node,*.so,*.dylib}"
+        ${watchboundDigestCheck}
         install -m 0644 "$rebuilt" "$asar"
         if [ -d "$rebuilt.unpacked" ]; then
           rm -rf "$unpacked"

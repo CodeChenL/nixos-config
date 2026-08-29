@@ -278,10 +278,7 @@ async function buildPayload(options, assetName) {
     fail("unsupported DreamSkin selector contract");
   }
   const linuxSelectorOverrides = {
-    "left-panel": '[class~="app-shell-left-panel"]',
-    "composer-chrome": ':is([data-codex-composer-root], .composer-surface-chrome)',
     "home-suggestions": ':is([data-home-ambient-suggestions], .group\\/home-suggestions)',
-    "message": ':is([data-marker-message], [data-message-author-role], [data-local-conversation-user-anchor], [data-local-conversation-final-assistant])',
   };
   const selectors = selectorContract.selectors.map((entry) => ({
     ...entry,
@@ -309,56 +306,11 @@ async function buildPayload(options, assetName) {
     .replace("__DREAM_SKIN_SELECTORS_JSON__", () => JSON.stringify(runtimeContract));
   const normalizedTheme = normalizeTheme(theme, imageName, imageMetadata);
   normalizedTheme.artKey = hash(imageBytes).slice(0, 20);
-  // Keep the upstream DreamSkin renderer/core cascade in charge of native
-  // chrome.  Linux only needs a narrow visibility bridge for tab anchors that
-  // can remain interactive while a light skin makes them blend into a surface.
-  // Do not raise the full tab panel or rewrite the native header stacking.
-  const linuxNativeTabCss = `
-html[data-dream-skin="active"] :is(
-  [data-app-shell-aura-tab-strip],
-  [data-app-shell-tab-strip-controller]
-) {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: var(--ds-text) !important;
-}
-
-html[data-dream-skin="active"] :is(
-  [data-app-shell-aura-tab-strip],
-  [data-app-shell-tab-strip-controller]
-) :is([role="tab"], [data-app-shell-tab-close-button]),
-html[data-dream-skin="active"] :is(
-  [data-app-shell-aura-tab-strip],
-  [data-app-shell-tab-strip-controller]
-) :is([role="tab"], [data-app-shell-tab-close-button]) * {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: inherit !important;
-  pointer-events: auto !important;
-}
-
-/* The alternate right-panel strip keeps its sticky add action beside, rather
- * than inside, the tab-strip controller. Scope through the full panel only to
- * reach that first strip row; never rewrite the panel's paint or stacking. */
-html[data-dream-skin="active"] [data-app-shell-tabs] > :has([data-app-shell-tab-strip-controller]) {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: var(--ds-text) !important;
-}
-
-html[data-dream-skin="active"] [data-app-shell-tabs] > :has([data-app-shell-tab-strip-controller]) :is(button, button *) {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: inherit !important;
-  pointer-events: auto !important;
-}
-
+  // The Linux frameless header is a root z-30 surface, while the right-panel
+  // tab row is trapped in the main content's lower stacking context. Let that
+  // row paint through without restyling the native tabs or their actions.
+  const linuxFramelessHeaderCss = `
 @layer dreamskin-accessibility {
-  /* Codex's fixed header is a root z-30 surface while the open right panel is
-   * contained by the main content's z-1 stacking context. Keep the native
-   * header controls on top, but let the underlying right-panel tab row paint
-   * through instead of covering it with the DreamSkin tint and blur. This
-   * accessibility layer must outrank theme Safe CSS's important header tint. */
   html[data-dream-skin="active"] main:is(
     .main-surface,
     [data-app-shell-main-surface],
@@ -372,38 +324,8 @@ html[data-dream-skin="active"] [data-app-shell-tabs] > :has([data-app-shell-tab-
     backdrop-filter: none !important;
   }
 }
-
-html[data-dream-skin="active"] [data-app-shell-tab-close-button],
-html[data-dream-skin="active"] [data-app-shell-tab-close-button] * {
-  color: var(--ds-muted) !important;
-}
-html[data-dream-skin="active"] [data-app-shell-tab-close-button:hover],
-html[data-dream-skin="active"] [data-app-shell-tab-close-button:hover] * {
-  color: var(--ds-text) !important;
-}
-
-/* The main task tab strip is mounted inside the native header context surface;
- * it does not carry the aura-tab-strip marker used by pane tab lists. */
-html[data-dream-skin="active"] [data-testid="app-shell-header-context-menu-surface"]:has([role="tab"]) {
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-html[data-dream-skin="active"] [data-testid="app-shell-header-context-menu-surface"]:has([role="tab"]) > div:has([role="tab"]) {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: var(--ds-text) !important;
-}
-
-html[data-dream-skin="active"] [data-testid="app-shell-header-context-menu-surface"]:has([role="tab"]) > div:has([role="tab"]) :is([role="tab"], [data-app-shell-tab-close-button]),
-html[data-dream-skin="active"] [data-testid="app-shell-header-context-menu-surface"]:has([role="tab"]) > div:has([role="tab"]) :is([role="tab"], [data-app-shell-tab-close-button]) * {
-  visibility: visible !important;
-  opacity: 1 !important;
-  color: inherit !important;
-}
-
 `;
-  const combinedCss = `${coreCss}\n${safeCss.runtimeSource}\n${linuxNativeTabCss}\n`;
+  const combinedCss = `${coreCss}\n${safeCss.runtimeSource}\n${linuxFramelessHeaderCss}\n`;
   const styleRevision = hash(Buffer.from(combinedCss, "utf8")).slice(0, 20);
   const payloadRevision = hash(Buffer.from(
     `codex-linux-dreamskin-v1\0${combinedCss}\0${runtimeTemplate}\0${JSON.stringify(normalizedTheme)}`,
@@ -449,8 +371,8 @@ html[data-dream-skin="active"] [data-testid="app-shell-header-context-menu-surfa
       linuxClientVersion: LINUX_DREAMSKIN_CLIENT_VERSION,
       packagePlatforms: manifest.platforms,
       platformCompatibilityOverride: platformMismatch,
-      linuxSelectorOverrides: ["left-panel", "composer-chrome", "home-suggestions", "message"],
-      linuxCompatibilityExceptions: [],
+      linuxSelectorOverrides: ["home-suggestions"],
+      linuxCompatibilityExceptions: ["right-panel-tabs-header-paint-through"],
       payloadRevision,
       styleRevision,
       image: imageName,

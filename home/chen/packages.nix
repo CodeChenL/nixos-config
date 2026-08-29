@@ -16,6 +16,7 @@ let
     "persistent-status-panel"
     "pet-overlay"
     "remote-control-ui"
+    "remote-mobile-control"
     "ssh-command-wrapper"
     "ui-tweaks"
   ];
@@ -23,15 +24,11 @@ let
   # do not depend on a runtime DreamSkin download/import. The package still
   # declares Windows/macOS, so the Linux adapter keeps the explicit mismatch
   # override below instead of mutating the upstream manifest.
-  oneLastKissDreamSkinPackage = ./codex-themes/one-last-kiss-ayanami-0.0.2.zip;
+  oneLastKissDreamSkinPackage = ./codex-themes/i-think-you-should-just-laugh-0.0.1.zip;
   codexDesktopPackage = pkgs."codex-desktop-api-key" {
     linuxFeatureIds = codexDesktopLinuxFeatures;
     enableComputerUseUi = true;
-    # Prefer the upstream Linux feature descriptors; opt into the direct
-    # app-initial patch only for a provider with an unusable model catalog.
-    enableCustomApiKeyUiPatch = false;
-    # Unlock only the existing upstream Ultra catalog/slider gates without
-    # enabling the broader API-key UI patch.
+    # 仅解锁上游已有的 Ultra catalog/slider gates。
     enableApiKeyUltraUiPatch = true;
     dreamSkinThemePackage = oneLastKissDreamSkinPackage;
     dreamSkinAllowPlatformMismatch = true;
@@ -53,7 +50,7 @@ let
 
     # Sub2API OpenAI passthrough must remain disabled for Responses API compatibility.
     "llm-pi-ai".providers.openai = {
-      baseURL = "http://43.133.254.201:8082/v1";
+      baseURL = "http://chenjaly.cn:8080/v1";
       apiKeyEnv = "OPENAI_API_KEY";
     };
 
@@ -86,14 +83,6 @@ in
     enable = true;
     package = codexDesktopPackage;
     cliPackage = pkgs.llm-agents.codex;
-    computerUseUi.enable = true;
-    remoteControl = {
-      enable = true;
-      package = pkgs.llm-agents.codex;
-      listen = "unix://";
-    };
-    remoteMobileControl.enable = false;
-    linuxFeatures = codexDesktopLinuxFeatures;
   };
 
   systemd.user.services.dsh-web = {
