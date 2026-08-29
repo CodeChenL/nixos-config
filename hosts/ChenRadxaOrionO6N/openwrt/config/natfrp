@@ -1,0 +1,7 @@
+config natfrp 'main'
+	option remote_mgmt '1'
+	option webui '1'
+	option webui_port '4101'
+	option webui_host '0.0.0.0'
+	option check_update '1'
+	option enabled '1'

@@ -1,0 +1,60 @@
+config dnsmasq
+	option domainneeded '1'
+	option localise_queries '1'
+	option rebind_protection '1'
+	option rebind_localhost '1'
+	option local '/lan/'
+	option domain 'lan'
+	option expandhosts '1'
+	option cachesize '0'
+	option authoritative '1'
+	option readethers '1'
+	option leasefile '/tmp/dhcp.leases'
+	option localservice '1'
+	option ednspacket_max '1232'
+	option localuse '1'
+	list address '/*.mcdn.bilivideo.cn/'
+	option noresolv '0'
+	option resolvfile '/tmp/resolv.conf.d/resolv.conf.auto'
+
+config dhcp 'lan'
+	option interface 'lan'
+	option start '101'
+	option limit '150'
+	option leasetime '12h'
+	option dhcpv4 'server'
+	option dhcpv6 'server'
+	option ra 'server'
+	list ra_flags 'managed-config'
+	list ra_flags 'other-config'
+	list dhcp_option '6,192.168.33.1'
+
+config dhcp 'wan'
+	option interface 'wan'
+	option ignore '1'
+
+config odhcpd 'odhcpd'
+	option maindhcp '0'
+	option leasefile '/tmp/hosts/odhcpd'
+	option leasetrigger '/usr/sbin/odhcpd-update'
+	option loglevel '4'
+
+config host
+	list mac '6C:24:08:32:40:A1'
+	option ip '192.168.33.2'
+
+config host
+	list mac 'A4:CC:B3:0B:61:29'
+	option ip '192.168.33.3'
+
+config host
+	list mac 'D8:CE:3A:8B:75:C0'
+	option ip '192.168.33.4'
+
+config host
+	list mac 'BC:24:11:35:A9:DE'
+	option ip '192.168.33.252'
+
+config host
+	list mac '4C:75:25:CF:7C:54'
+	option ip '192.168.33.11'

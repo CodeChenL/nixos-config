@@ -1,124 +1,154 @@
-# ChenRadxaOrionO6N OpenWrt container config
+# ChenRadxaOrionO6N OpenWrt 容器运行手册
 
-This host now uses a **minimal Nix-declared OpenWrt model** for core router
-configuration instead of treating imported `/etc/config/*` files as the long-term
-source of truth.
+这是 O6N OpenWrt 基础设施的唯一当前态 runbook。旧的 bootstrap/cutover 模式和
+switch-to-custom-image.sh 已不存在；主机始终使用双桥拓扑。网络、容器、镜像和
+secret 变更必须先构建、保留本地或串口控制台，再进行可回滚验证。
 
-- Nix-declared core UCI files:
-  - `system`
-  - `network`
-  - `dhcp`
-  - `firewall`
-- Plugin fragments that remain raw for now:
-  - `openclash`
+## 当前拓扑
 
-## Deployment stages
+    enp49s0 -> vmbr1 -> OpenWrt eth0  (LAN)
+    enp1s0  -> vmbr0 -> OpenWrt eth1  (WAN/PPPoE, MAC 88:c3:97:9b:92:03)
 
-The O6N host intentionally defaults to:
+- OpenWrt 容器：o6n-openwrt
+- Incus profile / storage pool：o6n-openwrt
+- 主机 LAN 地址：192.168.33.100/24，接口 vmbr1
+- 主机默认网关：192.168.33.1（OpenWrt LAN）
+- OpenWrt 镜像别名：openwrt-custom
 
-```nix
-o6n.openwrt.mode = "bootstrap";
-```
+相关声明：
 
-This keeps the host on a safe single-NIC management bridge while you install
-NixOS, pull the OpenWrt image, render secrets, and validate the container.
-Bootstrap uses an Incus-managed bridge in the same `192.168.33.0/24` LAN as
-the declared OpenWrt LAN, with host-side bridge address `192.168.33.254/24`.
+- 主机桥和地址：../networking.nix
+- Incus、镜像和 reconcile：../openwrt-container.nix
+- 镜像定义：../openwrt-image.yaml
+- 原生 UCI 模板：config/
+- 额外托管文件：plugins/
 
-Only switch to:
+## 声明式流程
 
-```nix
-o6n.openwrt.mode = "cutover";
-```
+o6n-openwrt-ensure.service：
 
-after you are ready to move the host into the final two-bridge topology:
+1. 确认 openwrt-custom 镜像存在。
+2. openwrt-image.yaml 或 distrobuilder 变化时，先完成新镜像构建，再替换别名。
+3. 确认 o6n-openwrt 容器存在、使用 o6n-openwrt profile，并处于运行状态。
 
-- `enp49s0 -> vmbr1 -> OpenWrt eth0` (LAN)
-- `enp1s0  -> vmbr0 -> OpenWrt eth1` (WAN / PPPoE)
+o6n-openwrt-reconcile.service 依赖 ensure：
 
-In cutover mode the host LAN management address is `192.168.33.100/24` on
-`vmbr1`, with default gateway `192.168.33.1` provided by OpenWrt.
+1. 从 /etc/nixos/secrets/o6n-openwrt.env 更新运行时 secret 副本。
+2. 在 root-only 临时目录渲染 config/ 与 plugins/ 中的占位符。
+3. 删除上一次由 Nix 管理、但本次 manifest 已移除的 /etc/config 文件。
+4. 推送全部托管文件，重载 network/firewall/cron，并同步容器 root 密码。
 
-## Temporary host networking for bootstrap
-
-The O6N host includes the basic tools needed to get temporary WAN access before
-OpenWrt takes over:
-
-- `ethtool`
-- `ppp`
-- `rp-pppoe`
-
-Typical bootstrap flow on the host:
-
-```sh
-sudo ip link set dev enp1s0 down
-sudo ip link set dev enp1s0 address 88:C3:97:9B:92:03
-sudo ip link set dev enp1s0 up
-
-sudo pppoe-setup
-sudo pppoe-start
-```
-
-Use this only to bootstrap NixOS / Incus / OpenWrt. Stop host-side PPPoE before
-switching to `o6n.openwrt.mode = "cutover"`, otherwise the host and OpenWrt
-will compete for the same WAN uplink.
+不要在新镜像构建成功前手工删除当前容器或 openwrt-custom 镜像。
 
 ## Secrets
 
-Runtime secrets live outside Git and outside the Nix store:
+源文件和运行时副本都必须是 root-only：
 
-```text
-/etc/nixos/secrets/o6n-openwrt.env   # source of truth inside repo checkout
-/var/lib/o6n-openwrt/secrets.env     # runtime copy used by reconcile
-```
+    /etc/nixos/secrets/o6n-openwrt.env
+    /var/lib/o6n-openwrt/secrets.env
 
-Create the source file on the O6N host as `root:root` with mode `0600`:
+首次准备：
 
-```sh
-sudo install -d -m 0700 /etc/nixos/secrets
-sudo install -m 0600 /dev/null /etc/nixos/secrets/o6n-openwrt.env
-sudoedit /etc/nixos/secrets/o6n-openwrt.env
-```
+    sudo install -d -m 0700 /etc/nixos/secrets
+    sudo install -m 0600 \
+      hosts/ChenRadxaOrionO6N/openwrt/o6n-openwrt.env.example \
+      /etc/nixos/secrets/o6n-openwrt.env
+    sudoedit /etc/nixos/secrets/o6n-openwrt.env
 
-You can start from the tracked example file:
+当前必需键：
 
-```sh
-sudo install -d -m 0700 /etc/nixos/secrets
-sudo install -m 0600 hosts/ChenRadxaOrionO6N/openwrt/o6n-openwrt.env.example /etc/nixos/secrets/o6n-openwrt.env
-sudoedit /etc/nixos/secrets/o6n-openwrt.env
-```
+    WAN_PPPOE_USERNAME
+    WAN_PPPOE_PASSWORD
+    WG_VAMRS_PRIVATE_KEY
+    WG_CHEN_INTERFACE_PRIVATE_KEY
+    WG_CHEN_PEER1_PRIVATE_KEY
+    WG_CHEN_PEER2_PRIVATE_KEY
+    OPENCLASH_DASHBOARD_PASSWORD
+    OPENCLASH_SUBSCRIBE_ADDRESS
+    OPENCLASH_SUBSCRIBE_INFO_URL
+    RPCD_ROOT_PASSWORD_HASH
 
-Required keys currently used by the declared config and plugin fragments:
+RPCD_ROOT_PASSWORD_HASH 必须是以 $ 开头的 crypt hash，并同时用于 LuCI/rpcd
+和容器 root。特殊内容可写成 NAME=base64:<base64-value>。reconcile 会在 secret
+缺失、权限过宽、键缺失或 hash 格式错误时失败，不会推送半渲染配置。
 
-```text
-WAN_PPPOE_USERNAME=
-WAN_PPPOE_PASSWORD=
-WG_VAMRS_PRIVATE_KEY=
-WG_CHEN_INTERFACE_PRIVATE_KEY=
-WG_CHEN_PEER1_PRIVATE_KEY=
-WG_CHEN_PEER2_PRIVATE_KEY=
-OPENCLASH_DASHBOARD_PASSWORD=
-OPENCLASH_SUBSCRIBE_ADDRESS=
-OPENCLASH_SUBSCRIBE_INFO_URL=
-RPCD_ROOT_PASSWORD_HASH=
-```
+## 安全部署
 
-`RPCD_ROOT_PASSWORD_HASH` is reused for both the LuCI/rpcd login and the
-container root account used by `dropbear`/SSH, so one declared hash keeps both
-access paths aligned.
+涉及 networking.nix、openwrt-container.nix、openwrt-image.yaml、config/
+或 plugins/ 时，不要只保留当前 SSH 会话作为恢复路径。
 
-If a value contains characters that are awkward to store literally, use
-`NAME=base64:<base64-value>`. The reconcile service fails closed if the secret
-file is missing, too permissive, or lacks a required key.
+1. 打开本地显示器/键盘或稳定的串口控制台。
+2. 记录当前系统与容器状态，并创建容器快照：
 
-## Migration references
+       readlink -f /run/current-system
+       sudo incus info o6n-openwrt
+       snapshot=pre-nix-$(date +%Y%m%d-%H%M%S)
+       sudo incus snapshot o6n-openwrt "$snapshot"
+       printf '%s\n' "$snapshot"
 
-The previously imported raw OpenWrt config files under `openwrt/etc/config/`
-are kept only as migration references. They are no longer the active source of
-truth for reconcile on this branch. If you need to compare semantics while
-extending the Nix model, use those files together with the backup branch created
-during the migration rewrite:
+3. 先构建，不激活：
 
-```text
-backup/o6n-openwrt-raw-config
-```
+       sudo nixos-rebuild build \
+         --flake 'path:/etc/nixos#ChenRadxaOrionO6N'
+
+4. 从本地/串口控制台临时激活：
+
+       sudo nixos-rebuild test \
+         --flake 'path:/etc/nixos#ChenRadxaOrionO6N'
+
+5. 完成下面的主机、容器、LAN、DNS 和外网验证后，才执行 switch。
+
+## 验证
+
+主机与 systemd：
+
+    systemctl is-active incus.service incus-preseed.service
+    systemctl --no-pager --full status \
+      o6n-openwrt-ensure.service o6n-openwrt-reconcile.service
+    ip -br link show vmbr0 vmbr1 enp1s0 enp49s0
+    ip -br address show vmbr1
+    ip route show default
+
+容器与 OpenWrt：
+
+    sudo incus info o6n-openwrt
+    sudo incus exec o6n-openwrt -- ubus call system board
+    sudo incus exec o6n-openwrt -- ip -br address
+    sudo incus exec o6n-openwrt -- uci show network
+    sudo incus exec o6n-openwrt -- uci show firewall
+    sudo incus exec o6n-openwrt -- logread -e pppd
+
+从 LAN 客户端验证：
+
+    ping -c 3 192.168.33.1
+    nslookup openwrt.org 192.168.33.1
+    curl -I --max-time 10 https://openwrt.org/
+
+## 故障恢复
+
+先在本地/串口控制台保存日志；不要先删容器、profile、storage pool 或镜像：
+
+    sudo journalctl -u o6n-openwrt-ensure.service \
+      -u o6n-openwrt-reconcile.service -b --no-pager -n 300
+    sudo incus info o6n-openwrt --show-log
+
+若新 NixOS generation 导致主机网络异常：
+
+    sudo nixos-rebuild switch --rollback
+
+若只有 reconcile 失败，修复 secret 或模板后重放：
+
+    sudo systemctl restart o6n-openwrt-reconcile.service
+
+若容器停止但配置仍完整：
+
+    sudo incus start o6n-openwrt
+    sudo systemctl restart o6n-openwrt-reconcile.service
+
+若必须恢复部署前容器快照，操作期间网络会中断，只能从本地/串口控制台执行：
+
+    sudo incus stop o6n-openwrt
+    sudo incus restore o6n-openwrt <snapshot-name>
+    sudo incus start o6n-openwrt
+
+恢复后重新执行完整验证；确认稳定后再删除旧快照。

@@ -1,0 +1,79 @@
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fd77:58a4:e94e::/48'
+	option packet_steering '1'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.33.1'
+	option netmask '255.255.255.0'
+	list dns '223.5.5.5'
+	list dns '114.114.114.114'
+
+config interface 'wan'
+	option device 'eth1'
+	option proto 'pppoe'
+	option username '@@OWRT_SECRET:WAN_PPPOE_USERNAME@@'
+	option password '@@OWRT_SECRET:WAN_PPPOE_PASSWORD@@'
+	option ipv6 'auto'
+	list ip6class 'local'
+
+config interface 'wan6'
+	option device 'eth1'
+	option proto 'dhcpv6'
+
+config device
+	option name 'eth1'
+	option macaddr '88:C3:97:9B:92:03'
+
+config interface 'vamrs'
+	option proto 'wireguard'
+	option private_key '@@OWRT_SECRET:WG_VAMRS_PRIVATE_KEY@@'
+	list addresses '10.0.32.15/32'
+	list addresses 'fd32::15/128'
+	option ip6assign '64'
+	list dns '192.168.2.1'
+
+config wireguard_vamrs
+	option description '导入对端配置'
+	option public_key 'WVcdwHDpBQq2bg4bJE6zHRdWuPG7mptkuF48HxNFNw4='
+	option persistent_keepalive '25'
+	option endpoint_host 'vamrs.vpndns.net'
+	option endpoint_port '51820'
+	option route_allowed_ips '1'
+	list allowed_ips '10.0.32.0/24'
+	list allowed_ips 'fd32::/64'
+	list allowed_ips '192.168.2.0/24'
+	list allowed_ips 'fd02::/64'
+	list allowed_ips '192.168.31.0/24'
+
+config interface 'chen'
+	option proto 'wireguard'
+	option private_key '@@OWRT_SECRET:WG_CHEN_INTERFACE_PRIVATE_KEY@@'
+	option listen_port '51820'
+	list addresses '10.0.33.1/32'
+
+config wireguard_chen
+	option public_key '2G5YW0LIcguj3TbzSvZZuyU852nCtg8nZqvO8hJD9AE='
+	option private_key '@@OWRT_SECRET:WG_CHEN_PEER1_PRIVATE_KEY@@'
+	list allowed_ips '10.0.33.2/32'
+	option route_allowed_ips '1'
+	option persistent_keepalive '25'
+
+config wireguard_chen
+	option public_key '9uAurrT6dpl8IATLWGk65fly+mAFCNsRjPXhxX7GWHo='
+	option private_key '@@OWRT_SECRET:WG_CHEN_PEER2_PRIVATE_KEY@@'
+	option route_allowed_ips '1'
+	option persistent_keepalive '25'
+	list allowed_ips '10.0.33.3/32'

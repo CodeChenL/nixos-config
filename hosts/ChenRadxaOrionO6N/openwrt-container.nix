@@ -8,23 +8,14 @@
 let
   cfg = config.o6n.openwrt;
   containerName = "o6n-openwrt";
-  declarativeConfig = import ./openwrt/uci.nix { inherit lib; };
+  readDirectoryFiles = directory:
+    builtins.mapAttrs (
+      name: _: builtins.readFile (directory + "/${name}")
+    ) (lib.filterAttrs (_: type: type == "regular") (builtins.readDir directory));
 
   # distrobuilder 需要 root 权限（chroot/mknod），无法在 Nix 沙盒中运行。
   # 镜像构建在 systemd 阶段完成（o6n-openwrt-ensure.service，以 root 运行）。
   # 首次构建可能需数分钟，已构建后幂等跳过，后续 switch 秒级完成。
-  buildImageScript = pkgs.writeShellScriptBin "o6n-openwrt-build-image" ''
-    set -eu
-    TMP=$(mktemp -d)
-    trap "rm -rf $TMP" EXIT
-    sed 's/armsr-armv8/aarch64/' ${./openwrt-image.yaml} > "$TMP/o6n-image.yaml"
-    ${pkgs.distrobuilder}/bin/distrobuilder build-incus "$TMP/o6n-image.yaml" "$TMP/image" \
-      --sources-dir "$TMP/sources" --cache-dir "$TMP/cache"
-    ${pkgs.incus}/bin/incus image delete openwrt-custom 2>/dev/null || true
-    ${pkgs.incus}/bin/incus image import "$TMP/image/incus.tar.xz" "$TMP/image/rootfs.squashfs" --alias openwrt-custom
-    echo "Image imported as openwrt-custom"
-  '';
-
   # 镜像配置哈希：当 image.yaml 或 distrobuilder 版本变更时自动触发重建
   imageConfigHash = builtins.hashString "sha256" (
     builtins.readFile ./openwrt-image.yaml
@@ -32,12 +23,9 @@ let
   );
   imageStampFile = "${secretDir}/.image-config-hash";
 
-  openwrtPluginDir = ./openwrt/plugins;
-  openwrtPluginEntries = builtins.readDir openwrtPluginDir;
-  openwrtPluginFiles = builtins.mapAttrs (
-    name: _: builtins.readFile (openwrtPluginDir + "/${name}")
-  ) (lib.filterAttrs (_: type: type == "regular") openwrtPluginEntries);
-  openwrtConfigSources = declarativeConfig.files // openwrtPluginFiles;
+  openwrtConfigSources =
+    readDirectoryFiles ./openwrt/config
+    // readDirectoryFiles ./openwrt/plugins;
   openwrtConfigDir = pkgs.runCommandLocal "o6n-openwrt-config" { } (
     "mkdir -p $out\n"
     + lib.concatMapStringsSep "\n" (name: ''
@@ -48,10 +36,7 @@ let
   secretDir = "/var/lib/o6n-openwrt";
   secretSourceFile = "secrets/o6n-openwrt.env";
   secretFile = "${secretDir}/secrets.env";
-  openwrtConfigEntries = builtins.readDir openwrtConfigDir;
-  openwrtConfigFiles = builtins.attrNames (
-    lib.filterAttrs (_: type: type == "regular") openwrtConfigEntries
-  );
+  openwrtConfigFiles = builtins.attrNames openwrtConfigSources;
   managedConfigManifest = pkgs.writeText "o6n-openwrt-managed-config-files" ''
     ${lib.concatStringsSep "\n" openwrtConfigFiles}
   '';
