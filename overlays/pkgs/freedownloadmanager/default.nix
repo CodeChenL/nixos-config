@@ -1,10 +1,6 @@
-# overlays/pkgs/freedownloadmanager/default.nix
-# 包拆分：每个文件对应 overlays/default.nix 中的一个 let 绑定
-# 签名：{ inputs, final, prev } -> { freedownloadmanager = ...; }
 { inputs, final, prev }:
 
-{
-  freedownloadmanager = final.callPackage (
+final.callPackage (
     {
       lib,
       stdenv,
@@ -135,5 +131,4 @@
         mainProgram = "fdm";
       };
     })
-  ) { };
-}
+  ) { }

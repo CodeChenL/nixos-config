@@ -1,31 +1,13 @@
 # 自定义 Overlay：注入 unstable / master / NUR 通道包
 #
 # 约定：
-#   - pkgs/<name>/default.nix: 单包定义（self: super: { name = ...; }）
+#   - pkgs/<name>/default.nix: 直接返回包或包函数
 #   - 子目录其他文件（patch、lock 等）放在 pkgs/<name>/ 内
 #   - kernel/、cix-* 等独立 overlay 子目录继续保留为 callPackage
-#   - 通配符导入（mapModules）保证新增包自动生效
+#   - 包需要在最终 attrset 中显式列出
 
 inputs: final: prev:
 let
-  # pkgs/<name>/default.nix -> { <name> = ...; }
-  # 签名约定：每个子包接受 final.callPackage 调用
-  collectPkgs = dir:
-    let
-      entries = builtins.readDir dir;
-      subdirs = builtins.filter (n: entries.${n} == "directory") (builtins.attrNames entries);
-    in
-    builtins.foldl' (acc: name:
-      let
-        path = dir + "/${name}/default.nix";
-        exists = builtins.pathExists path;
-      in
-      if exists then acc // (import path { inherit inputs; inherit final prev; })
-      else acc
-    ) { } subdirs;
-
-  userPackages = collectPkgs ./pkgs;
-
   radxaLinkrDebuggerCtl =
     inputs.radxa-linkr-debugger.packages.${prev.stdenv.hostPlatform.system}.radxa-linkr-debuggerctl;
 
@@ -74,16 +56,6 @@ let
     libxrandr
     libxcb
   ]);
-
-  ngr = final.writeShellScriptBin "ngr" ''
-    if [ "$#" -eq 0 ]; then
-      echo "usage: ngr <program> [args...]" >&2
-      exit 64
-    fi
-
-    export LD_LIBRARY_PATH="${final.lib.makeLibraryPath ngrLibraries}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    exec "$@"
-  '';
 
   codexPackage = inputs.llm-agents.packages.${prev.stdenv.hostPlatform.system}.codex;
   # Codex client normalization: keep tool output adjacent to its call before
@@ -164,7 +136,7 @@ in
       };
     };
 
-  inherit ngrLibraries ngr claude-skills;
+  inherit ngrLibraries claude-skills;
 
   gleam = prev.gleam.overrideAttrs (oldAttrs: {
     checkFlags = (oldAttrs.checkFlags or [ ]) ++ [
@@ -201,16 +173,12 @@ in
     '';
   };
 
-  inherit (userPackages)
-    codex-desktop-api-key
-    freedownloadmanager
-    trae-cn
-    github-copilot-cli
-    llama-cpp-full
-    natfrp-service
-    pgyvisitor
-    radxa-linkr-debuggerctl
-    rustty
-    sub2api
-    ;
+  codex-desktop-api-key = import ./pkgs/codex-desktop-api-key { inherit inputs final prev; };
+  freedownloadmanager = import ./pkgs/freedownloadmanager { inherit inputs final prev; };
+  llama-cpp-full = import ./pkgs/llama-cpp-full { inherit inputs final prev; };
+  natfrp-service = import ./pkgs/natfrp-service { inherit inputs final prev; };
+  pgyvisitor = import ./pkgs/pgyvisitor { inherit inputs final prev; };
+  radxa-linkr-debuggerctl = radxaLinkrDebuggerCtl;
+  rustty = inputs.rustty.packages.${prev.stdenv.hostPlatform.system}.rustty;
+  sub2api = import ./pkgs/sub2api { inherit inputs final prev; };
 }

@@ -16,8 +16,7 @@
 #   /var/log/oray/pgyvpn     日志目录
 { inputs, final, prev }:
 
-{
-  pgyvisitor = final.callPackage (
+final.callPackage (
     {
       lib,
       stdenv,
@@ -79,5 +78,4 @@
         platforms = [ "x86_64-linux" ];
       };
     }
-  ) { };
-}
+  ) { }

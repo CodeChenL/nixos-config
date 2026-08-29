@@ -1,13 +1,12 @@
 { inputs, final, prev }:
 let
-  version = "0.1.169";
+  version = "0.1.183";
   src = prev.fetchurl {
     url = "https://github.com/Wei-Shaw/sub2api/releases/download/v${version}/sub2api_${version}_linux_amd64.tar.gz";
-    hash = "sha256-Rcq3CcV4IIsJ68rBoc+aao1qgbmZRipxO1jO4yuFOUY=";
+    hash = "sha256-WDOv0kTSMTEJ+9u6v78gdqiDq1RFY7m9xmtMCWNlNb4=";
   };
 in
-{
-  sub2api = prev.stdenv.mkDerivation {
+prev.stdenv.mkDerivation {
     pname = "sub2api";
     inherit version src;
 
@@ -33,5 +32,4 @@ in
       license = licenses.lgpl3Only;
       platforms = [ "x86_64-linux" ];
     };
-  };
-}
+  }

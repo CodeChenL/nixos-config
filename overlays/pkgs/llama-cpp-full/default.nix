@@ -15,8 +15,7 @@ let
     rpcSupport = true;
   };
 in
-{
-  llama-cpp-full = llama-cpp-with-backends.overrideAttrs (oldAttrs: {
+llama-cpp-with-backends.overrideAttrs (oldAttrs: {
     # Add OpenVINO support (not available as a standard option)
     cmakeFlags = (oldAttrs.cmakeFlags or []) ++ [
       "-DGGML_OPENVINO:BOOL=TRUE"
@@ -51,7 +50,7 @@ in
     + final.lib.optionalString (final.stdenv.buildPlatform.canExecute final.stdenv.hostPlatform) ''
       installShellCompletion --cmd llama-server --bash <($out/bin/llama-server --completion-bash)
     ''
-    + final.lib.optionalString true ''
+    + ''
       if [ ! -e $out/bin/llama-rpc-server ]; then
         if [ -x $out/bin/ggml-rpc-server ]; then
           ln -s ggml-rpc-server $out/bin/llama-rpc-server
@@ -68,5 +67,4 @@ in
       description = "LLM inference in C/C++ with full backend support (OpenVINO, CUDA, Vulkan, OpenCL, BLAS)";
       platforms = final.lib.platforms.unix;
     };
-  });
-}
+  })

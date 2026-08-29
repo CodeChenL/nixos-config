@@ -1,8 +1,7 @@
 # overlays/pkgs/natfrp-service/default.nix
 { inputs, final, prev }:
 
-{
-  natfrp-service = final.callPackage (
+final.callPackage (
     { lib, stdenvNoCC, fetchzip, zstd }:
     let
       version = "3.1.8";
@@ -43,5 +42,4 @@
         platforms = [ "x86_64-linux" "aarch64-linux" ];
       };
     }
-  ) { };
-}
+  ) { }

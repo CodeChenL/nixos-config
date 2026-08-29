@@ -13,11 +13,9 @@ let
     hash = "sha256-nrE3Zs9huPrpx52eYUpwcxKKnoywj6Ckjc3J/unVOxA=";
   };
 in
+# Desktop-only API-key UI patch. The provider still owns the actual
+# service-tier/reasoning semantics; this package only exposes the controls.
 {
-  # Desktop-only API-key UI patch. The provider still owns the actual
-  # service-tier/reasoning semantics; this package only exposes the controls.
-  codex-desktop-api-key =
-    {
       linuxFeatureIds ? [ ],
       enableComputerUseUi ? false,
       # Small opt-in escape hatch: expose the existing upstream Ultra candidate
@@ -153,5 +151,4 @@ NODE
           mv "$rebuilt.unpacked" "$unpacked"
         fi
       '';
-    });
-}
+    })
