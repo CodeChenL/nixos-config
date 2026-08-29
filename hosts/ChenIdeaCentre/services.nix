@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ pkgs, ... }:
 
 {
   # ── 传感器 ──────────────────────────────────────────────────────
@@ -118,9 +118,12 @@
   # ── Sub2API（AI API 网关）────────────────────────────────────────
   services.sub2api = {
     enable = true;
-    port = 8080;
-    adminEmail = "chenjiali@radxa.com";
-    adminPasswordSourceFile = "${config.users.users.chen.home}/nixos-config/secrets/sub2api/admin-password";
-    secretsDir = "/var/lib/sub2api/secrets";
+    externalDatabase = true;
+    environment = {
+      DATABASE_HOST = "47.254.74.103";
+      DATABASE_PORT = "5432";
+      REDIS_HOST = "47.254.74.103";
+      REDIS_PORT = "6379";
+    };
   };
 }

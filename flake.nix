@@ -138,6 +138,12 @@
       };
 
       # ── Radxa Orion O6N (CIX Sky1, aarch64) ────────────────────────────
+      nixosConfigurations.Aliyun = mkHost {
+        system = "x86_64-linux";
+        hostModulesPath = ./hosts/Aliyun;
+        homeConfig = import ./home/chen/server.nix;
+      };
+
       nixosConfigurations.ChenRadxaOrionO6N = mkHost {
         system = "aarch64-linux";
         hostModulesPath = ./hosts/ChenRadxaOrionO6N;
