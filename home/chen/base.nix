@@ -5,7 +5,6 @@
     ./shell.nix
     ./git.nix
     ./ssh.nix
-    ./htop.nix
     ./opencode.nix
   ];
 
@@ -16,6 +15,7 @@
   programs.home-manager.enable = true;
 
   programs.gpg.enable = true;
+  programs.htop.enable = true;
 
   home.sessionVariables = {
     EDITOR = "vim";
@@ -33,4 +33,5 @@
   home.file.".agents/skills".source = pkgs.claude-skills;
   home.packages = [ pkgs.tcpdump ];
   xdg.enable = true;
+  xdg.configFile."htop/htoprc".source = ./htoprc;
 }
