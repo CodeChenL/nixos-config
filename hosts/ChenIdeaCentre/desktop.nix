@@ -8,6 +8,32 @@ let
   '';
 
   vinputPackage = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+  fontAliases = [
+    { from = "Source Han Sans SC"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "思源黑体"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "Source Han Serif SC"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "思源宋体"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "SimSun"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "宋体"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "SimHei"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "黑体"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "Microsoft YaHei"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "微软雅黑"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "KaiTi"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "楷体"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "FangSong"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "仿宋"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "DengXian"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "等线"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "FZShuSong"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "FZHei"; prefer = [ "Source Han Sans SC" ]; }
+    { from = "FZKai"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "FZFangSong"; prefer = [ "Source Han Serif SC" ]; }
+    { from = "Symbol"; prefer = [ "Noto Sans Symbols" ]; }
+    { from = "sans-serif"; prefer = [ "Source Han Sans SC" "Noto Sans CJK SC" "Noto Sans" ]; }
+    { from = "serif"; prefer = [ "Source Han Serif SC" "Noto Serif CJK SC" "Noto Serif" ]; }
+  ];
 in
 
 {
@@ -121,121 +147,12 @@ in
         <?xml version="1.0"?>
         <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
         <fontconfig>
-
-          <!-- WPS Office: 思源黑体 → Source Han Sans SC -->
-          <alias>
-            <family>Source Han Sans SC</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>思源黑体</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-
-          <!-- WPS Office: 思源宋体 → Source Han Serif SC -->
-          <alias>
-            <family>Source Han Serif SC</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>思源宋体</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-
-          <!-- WPS Office Common Font Fallback: Windows 中文字体 → CJK 替代 -->
-          <alias>
-            <family>SimSun</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>宋体</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>SimHei</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>黑体</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>Microsoft YaHei</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>微软雅黑</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>KaiTi</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>楷体</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>FangSong</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>仿宋</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>DengXian</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-
-          <!-- WPS Office: 等线 → 无衬线 CJK -->
-          <alias>
-            <family>等线</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-
-          <!-- WPS Office: 方正系列字体 → CJK 替代 -->
-          <alias>
-            <family>FZShuSong</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>FZHei</family>
-            <prefer><family>Source Han Sans SC</family></prefer>
-          </alias>
-          <alias>
-            <family>FZKai</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-          <alias>
-            <family>FZFangSong</family>
-            <prefer><family>Source Han Serif SC</family></prefer>
-          </alias>
-
-          <!-- WPS 公式字体: 符号字体缺失时的回退 -->
-          <alias>
-            <family>Symbol</family>
-            <prefer><family>Noto Sans Symbols</family></prefer>
-          </alias>
-
-          <!-- 通用 fallback: 当请求的字体不存在时优先使用 CJK -->
-          <alias>
-            <family>sans-serif</family>
-            <prefer>
-              <family>Source Han Sans SC</family>
-              <family>Noto Sans CJK SC</family>
-              <family>Noto Sans</family>
-            </prefer>
-          </alias>
-          <alias>
-            <family>serif</family>
-            <prefer>
-              <family>Source Han Serif SC</family>
-              <family>Noto Serif CJK SC</family>
-              <family>Noto Serif</family>
-            </prefer>
-          </alias>
-
+          ${lib.concatMapStringsSep "\n" (alias: ''
+            <alias>
+              <family>${alias.from}</family>
+              <prefer>${lib.concatMapStringsSep "\n" (font: "              <family>${font}</family>") alias.prefer}</prefer>
+            </alias>
+          '') fontAliases}
         </fontconfig>
       '';
     };
