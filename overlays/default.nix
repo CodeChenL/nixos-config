@@ -84,6 +84,19 @@ let
     export LD_LIBRARY_PATH="${final.lib.makeLibraryPath ngrLibraries}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     exec "$@"
   '';
+
+  codexPackage = inputs.llm-agents.packages.${prev.stdenv.hostPlatform.system}.codex;
+  # Codex client normalization: keep tool output adjacent to its call before
+  # sending Responses requests, so strict providers tolerate hook-generated
+  # developer messages in the same turn.
+  codexPatchedSource = final.applyPatches {
+    src = codexPackage.src;
+    patches = [ ./pkgs/codex-client-normalize-order.patch ];
+  };
+  codexPatched = codexPackage.override {
+    srcOverride = codexPatchedSource;
+    sourceRoot = "${codexPatchedSource.name}/codex-rs";
+  };
 in
 {
   unstable = import inputs.nixpkgs-unstable {
@@ -97,7 +110,7 @@ in
       permittedInsecurePackages = prev.config.permittedInsecurePackages or [ ];
     };
   };
-  llm-agents = inputs.llm-agents.packages.${prev.stdenv.hostPlatform.system};
+  llm-agents = inputs.llm-agents.packages.${prev.stdenv.hostPlatform.system} // { codex = codexPatched; };
 
   nur =
     let
