@@ -77,7 +77,7 @@ in
 {
   imports = [
     ./packages-cli.nix
-    ./codex.nix
+    ./codex
     inputs.codex-desktop-linux.homeManagerModules.default
   ];
 
