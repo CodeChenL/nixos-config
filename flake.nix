@@ -9,8 +9,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixos-hardware.url = "github:NixOS/nixos-hardware";
-
     nixos-apple-silicon.url = "github:nix-community/nixos-apple-silicon";
 
     # Radxa 官方维护的 nixos-hardware fork（带 orion-o6、cix/sky1 等 Radxa/CIX SoC 模块）
@@ -43,7 +41,7 @@
     };
 
     codex-desktop-linux = {
-      url = "github:ilysenko/codex-desktop-linux/0458e45cee3389f84de9dcb32586d1188513436e";
+      url = "github:ilysenko/codex-desktop-linux/7994f23cd5c2da23cdc0953367ff6056ebed50b3";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -75,7 +73,6 @@
       self,
       nixpkgs,
       home-manager,
-      nixos-hardware,
       nixos-apple-silicon,
       nixos-hardware-radxa,
       disko,
