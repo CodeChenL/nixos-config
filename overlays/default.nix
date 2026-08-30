@@ -65,6 +65,7 @@ let
     src = codexPackage.src;
     patches = [
       ./pkgs/codex-client-normalize-order.patch
+      ./pkgs/codex-auth-status-openai.patch
     ];
   };
   codexPatched = codexPackage.override {
