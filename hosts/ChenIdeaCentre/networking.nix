@@ -5,14 +5,40 @@
   networking.hostName = "ChenIdeaCentre";
 
   # ── 网络管理 ────────────────────────────────────────────────────
-  networking.networkmanager.enable = true;
+  networking.networkmanager = {
+    enable = true;
+    ensureProfiles = {
+      environmentFiles = [
+        "${config.users.users.chen.home}/nixos-config/secrets/o6n-openwrt.env"
+      ];
+      profiles.chen-wireguard = {
+        connection = {
+          id = "Chen WireGuard";
+          type = "wireguard";
+          interface-name = "wg-chen";
+          uuid = "6f17d306-a21c-55fb-b27b-e4441aeed1ee";
+        };
+        wireguard.private-key = "$WG_CHEN_PEER2_PRIVATE_KEY";
+        "wireguard-peer.hoJX1qGLQ2M2k7YjwXUAVTPCROhyUawLj1zIs6iewXQ=" = {
+          allowed-ips = "10.0.33.0/24;192.168.33.0/24;";
+          endpoint = "frp-ski.com:51888";
+          persistent-keepalive = "25";
+        };
+        ipv4 = {
+          address1 = "10.0.33.3/32";
+          method = "manual";
+          never-default = "true";
+        };
+        ipv6.method = "disabled";
+      };
+    };
+  };
 
   # ── 防火墙（已禁用）─────────────────────────────────────────────
   networking.firewall.enable = false;
 
   # ── WireGuard ───────────────────────────────────────────────────
-  # WireGuard 由 NetworkManager 管理
-  # 安装后通过 `nmcli connection import` 导入现有配置
+  # WireGuard 由 NetworkManager 的 ensureProfiles 声明式管理
 
   # ── SSH ─────────────────────────────────────────────────────────
   services.openssh = {

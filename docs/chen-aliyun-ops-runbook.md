@@ -90,6 +90,29 @@ PGPASSWORD="$DBPW" pg_dump \
 注意：Aliyun 的 `5432` 和 `6379` 向公网开放，当前依赖密码认证；
 如果允许按来源网段收紧，优先用防火墙只放行 ChenIdeaCentre 的公网出口 IP。
 
+## WireGuard
+
+Aliyun 通过 OpenWrt 的 `chen` WireGuard 隧道接入内网：
+
+- 接口：`chen`，地址 `10.0.33.2/32`
+- 私钥来源：`/home/chen/nixos-config/secrets/o6n-openwrt.env` 的 `WG_CHEN_PEER1_PRIVATE_KEY`
+- 对端公钥：`hoJX1qGLQ2M2k7YjwXUAVTPCROhyUawLj1zIs6iewXQ=`
+- 对端 endpoint：`frp-ski.com:51888`
+- 路由：`10.0.33.0/24`、`192.168.33.0/24`
+
+私钥由 `wireguard-chen.service` 的 `preStart` 在 WireGuard 启动前写入
+`/run/secrets/wireguard-chen.key`，不会进入 Nix store。
+
+验证：
+
+```sh
+systemctl list-units --type=service --no-pager | grep wireguard
+ip -4 address show dev chen
+wg show chen
+ip route get 10.0.33.1
+ip route get 192.168.33.1
+```
+
 ## 回滚
 
 ```sh

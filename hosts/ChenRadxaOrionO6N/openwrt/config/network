@@ -65,6 +65,7 @@ config interface 'chen'
 	list addresses '10.0.33.1/32'
 
 config wireguard_chen
+	option description 'ALIYUN'
 	option public_key '2G5YW0LIcguj3TbzSvZZuyU852nCtg8nZqvO8hJD9AE='
 	option private_key '@@OWRT_SECRET:WG_CHEN_PEER1_PRIVATE_KEY@@'
 	list allowed_ips '10.0.33.2/32'
@@ -72,6 +73,7 @@ config wireguard_chen
 	option persistent_keepalive '25'
 
 config wireguard_chen
+	option description 'ChenIdeaCentre'
 	option public_key '9uAurrT6dpl8IATLWGk65fly+mAFCNsRjPXhxX7GWHo='
 	option private_key '@@OWRT_SECRET:WG_CHEN_PEER2_PRIVATE_KEY@@'
 	option route_allowed_ips '1'

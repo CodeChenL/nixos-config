@@ -19,6 +19,46 @@ in
     allowedTCPPorts = [ 22 5432 6379 ];
   };
 
+  # WireGuard：Aliyun 作为 OpenWrt `chen` 隧道的 ALIYUN peer。
+  # 本端私钥使用 OpenWrt secret 中的 WG_CHEN_PEER1_PRIVATE_KEY。
+  networking.wireguard.interfaces.chen = {
+    ips = [ "10.0.33.2/32" ];
+    privateKeyFile = "/run/secrets/wireguard-chen.key";
+    dynamicEndpointRefreshSeconds = 300;
+    peers = [
+      {
+        publicKey = "hoJX1qGLQ2M2k7YjwXUAVTPCROhyUawLj1zIs6iewXQ=";
+        allowedIPs = [
+          "10.0.33.0/24"
+          "192.168.33.0/24"
+        ];
+        endpoint = "frp-ski.com:51888";
+        persistentKeepalive = 25;
+      }
+    ];
+  };
+
+  # 从 OpenWrt secrets 文件提取 Aliyun 私钥，而不是把密钥写进 Nix store。
+  systemd.services.wireguard-chen.preStart = ''
+    set -euo pipefail
+    source_file=/home/chen/nixos-config/secrets/o6n-openwrt.env
+    destination=/run/secrets/wireguard-chen.key
+    [ -r "$source_file" ] || {
+      echo "missing WireGuard secret source: $source_file" >&2
+      exit 1
+    }
+    install -d -m 0700 "$(dirname "$destination")"
+    key=$(sed -n 's/^WG_CHEN_PEER1_PRIVATE_KEY=//p' "$source_file" | head -n1 | tr -d '\r\n')
+    [ -n "$key" ] || {
+      echo "WG_CHEN_PEER1_PRIVATE_KEY is missing or empty" >&2
+      exit 1
+    }
+    umask 077
+    printf '%s\n' "$key" > "$destination.tmp"
+    mv "$destination.tmp" "$destination"
+    chmod 600 "$destination"
+  '';
+
   # Sub2API 已启用；Aliyun 是共享 PostgreSQL/Redis 后端。
   services.sub2api.enable = true;
 
