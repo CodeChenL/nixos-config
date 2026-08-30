@@ -63,7 +63,10 @@ let
   # developer messages in the same turn.
   codexPatchedSource = final.applyPatches {
     src = codexPackage.src;
-    patches = [ ./pkgs/codex-client-normalize-order.patch ];
+    patches = [
+      ./pkgs/codex-client-normalize-order.patch
+      ./pkgs/codex-auth-status-openai.patch
+    ];
   };
   codexPatched = codexPackage.override {
     srcOverride = codexPatchedSource;
