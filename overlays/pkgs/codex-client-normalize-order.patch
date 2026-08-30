@@ -2,21 +2,21 @@ diff --git a/codex-rs/core/src/context_manager/history.rs b/codex-rs/core/src/co
 index b9a9b29..cd526a2 100644
 --- a/codex-rs/core/src/context_manager/history.rs
 +++ b/codex-rs/core/src/context_manager/history.rs
-@@ -447,6 +447,9 @@ impl ContextManager {
+@@ -463,6 +463,9 @@ impl ContextManager {
          // all function/tool calls must have a corresponding output
          normalize::ensure_call_outputs_present(items);
  
 +        // Strict Responses providers require output adjacent to its call.
 +        normalize::move_outputs_next_to_calls(items);
 +
-         // all outputs must have a corresponding function/tool call
+         // Paired outputs must have a corresponding call; named external outputs stand alone.
          normalize::remove_orphan_outputs(items);
  
 diff --git a/codex-rs/core/src/context_manager/history_tests.rs b/codex-rs/core/src/context_manager/history_tests.rs
 index 666c708..be30d15 100644
 --- a/codex-rs/core/src/context_manager/history_tests.rs
 +++ b/codex-rs/core/src/context_manager/history_tests.rs
-@@ -1809,6 +1809,43 @@ fn normalize_mixed_inserts_and_removals() {
+@@ -1912,6 +1912,43 @@ fn normalize_mixed_inserts_and_removals() {
      );
  }
  
@@ -64,7 +64,7 @@ diff --git a/codex-rs/core/src/context_manager/normalize.rs b/codex-rs/core/src/
 index 8ceb8c9..5fbe2f5 100644
 --- a/codex-rs/core/src/context_manager/normalize.rs
 +++ b/codex-rs/core/src/context_manager/normalize.rs
-@@ -216,6 +216,59 @@ pub(crate) fn remove_orphan_outputs(items: &mut Vec<ResponseItemEnvelope>) {
+@@ -224,6 +224,60 @@ pub(crate) fn remove_orphan_outputs(items: &mut Vec<ResponseItemEnvelope>) {
      }
  }
  
@@ -108,14 +108,15 @@ index 8ceb8c9..5fbe2f5 100644
 +fn output_matches_call_id(item: &ResponseItem, call_id: &str) -> bool {
 +    match item {
 +        ResponseItem::FunctionCallOutput {
-+            call_id: existing, ..
-+        }
-+        | ResponseItem::CustomToolCallOutput {
-+            call_id: existing, ..
-+        } => existing == call_id,
-+        ResponseItem::ToolSearchOutput {
 +            call_id: Some(existing),
 +            ..
++        }
++        | ResponseItem::ToolSearchOutput {
++            call_id: Some(existing),
++            ..
++        } => existing == call_id,
++        ResponseItem::CustomToolCallOutput {
++            call_id: existing, ..
 +        } => existing == call_id,
 +        _ => false,
 +    }
