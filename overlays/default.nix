@@ -150,6 +150,9 @@ in
     cix-vpu-driver = final.callPackage ./cix-vpu-driver { kernel = final.linux-cix-main; };
     cix-npu-driver = final.callPackage ./cix-npu-driver { kernel = final.linux-cix-main; };
   });
+  linux-sm8250-elish = final.callPackage ./linux-sm8250-elish { };
+  linuxPackages-sm8250-elish = final.linuxKernel.packagesFor final.linux-sm8250-elish;
+  xiaomi-elish-firmware = final.callPackage ./xiaomi-elish-firmware { };
   cix-dsp-firmware = final.callPackage ./cix-dsp-firmware { };
   cix-vpu-firmware = final.callPackage ./cix-vpu-firmware { };
   cix-vpu-headers = final.callPackage ./cix-vpu-headers { };
