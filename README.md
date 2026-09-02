@@ -11,6 +11,7 @@ ChenIdeaCentre 维护的 NixOS 多主机配置，使用 Nix Flakes + home-manage
 | `ChenAliyun` | x86_64-linux | 阿里云轻量服务器，Btrfs 全盘 + Sub2API 预留 |
 | `ChenRadxaOrionO6N` | aarch64-linux | Radxa Orion O6N (CIX Sky1)，运行 OpenWrt 容器 |
 | `ChenAsahiLinux` | aarch64-linux | Apple M1 Mac mini，Asahi Linux + OpenClaw 网关 |
+| `ChenXiaomiElish` | aarch64-linux | Xiaomi Pad 5 Pro (elish)，Qualcomm ABL 启动 |
 
 切换主机的标准命令：
 
@@ -30,7 +31,8 @@ sudo nixos-rebuild switch --flake .#ChenIdeaCentre
 │   ├── ChenWSL/           # WSL2 主机
 │   ├── ChenRadxaOrionO6N/ # Radxa 板
 │       └── openwrt/       # OpenWrt 容器：UCI 配置 + 启动脚本
-│   └── ChenAsahiLinux/    # Apple M1 Mac mini / Asahi Linux
+│   ├── ChenAsahiLinux/    # Apple M1 Mac mini / Asahi Linux
+│   └── ChenXiaomiElish/   # Xiaomi Pad 5 Pro / SM8250 / ABL
 ├── home/chen/             # home-manager：用户环境
 │   ├── lsp.nix            # LSP/工具集（dev 与 headless 共享）
 │   └── dev.nix            # 桌面主机的 LSP + 桌面工具 + 重资源 SDK
@@ -98,5 +100,6 @@ CI 只用 GitHub 托管 runner + 公开免费的 `DeterminateSystems/nix-install
 
 - O6N/OpenWrt 网络、部署与恢复：参考 `hosts/ChenRadxaOrionO6N/openwrt/README.md`
 - Aliyun 运维/迁移/回滚：参考 `docs/chen-aliyun-ops-runbook.md`
+- Xiaomi Elish 构建与首次启动：参考 `docs/xiaomi-elish-bringup.md`
 - OpenWrt 容器实现：`hosts/ChenRadxaOrionO6N/openwrt-container.nix` 中的 ensure/reconcile systemd 单元
 - skill 工作流：每个 skill 自带 `SKILL.md`（`skills/*/SKILL.md`）
