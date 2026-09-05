@@ -1,0 +1,3 @@
+interface:
+  display_name: "Chromium Video QA"
+  short_description: "Discover and test Chromium hardware video decode"
