@@ -69,7 +69,9 @@ in
 
         如果当前仓库是 Debian 打包仓库，涉及将本地构建的 Linux 内核 .deb 包传输到 Radxa 设备并在远端安装与验证时，必须严格使用 radxa-kernel-deployer skill。
 
-        使用 Radxa skills 执行打包或部署时，**绝对禁止**后台运行、异步运行、委派给子代理或使用任何等价的后台执行选项；必须在当前主任务中前台同步运行并等待对应 skill 工作流完整结束后再继续，且不需要额外轮询完成情况。
+        使用 Radxa skills 执行打包或部署时，**绝对禁止**后台运行、异步运行或设置 `run_in_background=true`；必须前台同步运行并等待对应 skill 工作流完整结束后再继续，且不需要额外轮询完成情况。
+
+        使用 git 提交时不要使用任何 ai/agent 签名。
       '';
     };
   } // codexConfig.profileFiles;
