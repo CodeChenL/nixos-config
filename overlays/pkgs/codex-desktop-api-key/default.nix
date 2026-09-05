@@ -76,7 +76,7 @@ in
       apiKeyUltraInstall = final.lib.optionalString enableApiKeyUltraUiPatch ''
         CODEX_API_KEY_ULTRA_GATES=${apiKeyUltraGatesScript} \
           CODEX_BUNDLE_SOURCE_MAP=${bundleSourceMapScript} \
-          ${final.nodejs}/bin/node ${ultraPatchScript} "$extracted"
+          ${final.nodejs}/bin/node ${ultraPatchScript} "$extracted" || exit 1
         install -Dm0644 "$extracted/.codex-linux/api-key-ultra-patch.json" \
           "$app/.codex-linux/api-key-ultra-patch.json"
       '';

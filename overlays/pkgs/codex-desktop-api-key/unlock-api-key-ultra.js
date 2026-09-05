@@ -7,30 +7,42 @@ const sourceMapModule = process.env.CODEX_BUNDLE_SOURCE_MAP
 const ultraGatesModule = process.env.CODEX_API_KEY_ULTRA_GATES
   ?? path.join(__dirname, "api-key-ultra-gates.js");
 const { withSourceMap } = require(sourceMapModule);
-const { applyApiKeyUltraGates } = require(ultraGatesModule);
+const { applyApiKeyUltraAssets } = require(ultraGatesModule);
 
 const root = path.resolve(process.argv[2] ?? process.cwd());
 const assetsDir = path.join(root, "webview", "assets");
 const assetNames = fs
   .readdirSync(assetsDir)
-  .filter((name) => /^app-initial-[^.]+\.js$/.test(name));
+  .filter((name) => /^app-(?:initial|primary)-[^.]+\.js$/.test(name))
+  .sort();
 
-if (assetNames.length !== 1) {
-  throw new Error(
-    `Expected exactly one desktop app-initial asset, found ${assetNames.length}: ${assetNames.join(", ")}`,
-  );
+if (assetNames.length === 0) {
+  throw new Error("Required desktop app assets are missing");
 }
 
-const assetName = assetNames[0];
-const assetPath = path.join(assetsDir, assetName);
-const originalSource = fs.readFileSync(assetPath, "utf8");
 // API-key hosts reuse the native OAuth entitlement path. Provider catalog
 // metadata and the native enabled-effort set remain the source of truth.
-const source = applyApiKeyUltraGates(originalSource, assetName);
+const assets = [];
+const results = applyApiKeyUltraAssets(assetNames.map(asset => ({
+  asset,
+  source: fs.readFileSync(path.join(assetsDir, asset), "utf8"),
+})));
+for (const result of results) {
+  const assetName = result.asset;
+  const assetPath = path.join(assetsDir, assetName);
+  const originalSource = fs.readFileSync(assetPath, "utf8");
 
-const mapped = withSourceMap({ assetName, originalSource, patchedSource: source });
-fs.writeFileSync(assetPath, mapped.source);
-fs.writeFileSync(path.join(assetsDir, mapped.mapName), mapped.mapText);
+  if (result.source !== originalSource) {
+    const mapped = withSourceMap({
+      assetName,
+      originalSource,
+      patchedSource: result.source,
+    });
+    fs.writeFileSync(assetPath, mapped.source);
+    fs.writeFileSync(path.join(assetsDir, mapped.mapName), mapped.mapText);
+  }
+  assets.push({ asset: assetName, patches: result.patches, validated: result.validated });
+}
 
 const reportPath = path.join(root, ".codex-linux", "api-key-ultra-patch.json");
 fs.mkdirSync(path.dirname(reportPath), { recursive: true });
@@ -39,11 +51,9 @@ fs.writeFileSync(
   `${JSON.stringify(
     {
       schemaVersion: 1,
-      asset: assetName,
-      patches: [
-        "api-key-ultra-model-catalog",
-        "api-key-ultra-power-slider",
-      ],
+      assets,
+      patches: [...new Set(assets.flatMap((entry) => entry.patches))],
+      validated: assets.flatMap((entry) => entry.validated),
     },
     null,
     2,
