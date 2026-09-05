@@ -12,7 +12,7 @@ usage() {
 用法: $(basename "$0") [选项]
 
 选项:
-  --clean      构建前执行 make clean
+  --clean      构建前执行 make clean（仅明确需要时使用，会显著增加时间）
   --test       构建前执行 make test（即 make test deb）
   -h, --help   显示帮助
 EOF

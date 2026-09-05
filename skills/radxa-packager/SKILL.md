@@ -1,6 +1,16 @@
 ---
 name: radxa-packager
 description: Radxa Linux 内核 Debian 包编译打包工作流。
+keywords:
+  - radxa
+  - linux
+  - kernel
+  - debian
+  - package
+  - make deb
+  - packaging
+  - dkms
+  - no clean
 ---
 
 ## 前置条件
@@ -11,6 +21,7 @@ description: Radxa Linux 内核 Debian 包编译打包工作流。
 | 原因 | `debian/patches` 和 `Makefile` 包含必要操作 |
 | 并发控制 | 必须使用 `flock`，同一时间仅允许一个 `make deb` 实例 |
 | 运行方式 | **绝对禁止**以任何后台方式运行此 skill；必须前台同步运行并等待完成 |
+| 默认清理行为 | 默认执行 `make deb`，**不清理**；仅当用户明确要求时才使用 `--clean` |
 
 ## 调用方式
 
@@ -18,7 +29,7 @@ description: Radxa Linux 内核 Debian 包编译打包工作流。
 # 标准构建
 ./skills/radxa-packager/scripts/build.sh
 
-# 清理后构建
+# 只有明确需要清理时才使用；由于 make deb 耗时很长，通常不要 clean
 ./skills/radxa-packager/scripts/build.sh --clean
 
 # 带测试构建
