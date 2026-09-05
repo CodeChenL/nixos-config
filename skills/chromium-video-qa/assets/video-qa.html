@@ -1,0 +1,157 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>QA:loading</title>
+<style>
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: #111;
+    color: #eee;
+    font: 16px monospace;
+  }
+  video { width: 100%; height: 100%; object-fit: contain; }
+  pre {
+    position: fixed;
+    inset: 12px auto auto 12px;
+    margin: 0;
+    padding: 10px;
+    max-width: calc(100% - 44px);
+    max-height: calc(100% - 44px);
+    overflow: auto;
+    background: #000c;
+  }
+</style>
+<video id="video" muted autoplay playsinline></video>
+<pre id="status">loading</pre>
+<script>
+  const params = new URLSearchParams(location.search);
+  const video = document.querySelector('#video');
+  const status = document.querySelector('#status');
+  const numberParam = (name, fallback) => {
+    const raw = params.get(name);
+    if (raw === null || raw === '')
+      return fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : fallback;
+  };
+  const qa = window.qa = {
+    id: params.get('id') || 'unnamed',
+    state: 'loading',
+    mode: params.get('mode') || 'full',
+    source: params.get('src'),
+    mime: params.get('mime') || '',
+    canPlayType: '',
+    mediaSourceSupported: null,
+    mediaCapabilities: null,
+    presentedFrames: 0,
+    seekEvents: [],
+  };
+  const timeoutMs = numberParam('timeoutMs', 45000);
+  const seekAt = numberParam('seekAt', 2);
+  const seekTo = numberParam('seekTo', 4);
+  let wallStart;
+  let seekRequested = false;
+
+  function update() {
+    const quality = video.getVideoPlaybackQuality();
+    Object.assign(qa, {
+      currentTime: video.currentTime,
+      duration: video.duration,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      readyState: video.readyState,
+      paused: video.paused,
+      ended: video.ended,
+      totalVideoFrames: quality.totalVideoFrames,
+      droppedVideoFrames: quality.droppedVideoFrames,
+      corruptedVideoFrames: quality.corruptedVideoFrames,
+      wallMs: wallStart === undefined ? 0 :
+          Math.round(performance.now() - wallStart),
+    });
+    status.textContent = JSON.stringify(qa, null, 2);
+    document.title = 'QA:' + qa.state;
+  }
+
+  function finish(state, error) {
+    qa.state = state;
+    if (error)
+      qa.error = String(error);
+    update();
+  }
+
+  function countFrame() {
+    ++qa.presentedFrames;
+    update();
+    if (!video.ended)
+      video.requestVideoFrameCallback(countFrame);
+  }
+
+  async function collectCapabilities() {
+    if (!qa.mime)
+      return;
+    qa.canPlayType = video.canPlayType(qa.mime);
+    if (window.MediaSource)
+      qa.mediaSourceSupported = MediaSource.isTypeSupported(qa.mime);
+    if (!navigator.mediaCapabilities)
+      return;
+    try {
+      qa.mediaCapabilities = await navigator.mediaCapabilities.decodingInfo({
+        type: 'file',
+        video: {
+          contentType: qa.mime,
+          width: numberParam('width', 1280),
+          height: numberParam('height', 720),
+          bitrate: numberParam('bitrate', 4000000),
+          framerate: numberParam('framerate', 30),
+        },
+      });
+    } catch (error) {
+      qa.mediaCapabilitiesError = String(error);
+    }
+  }
+
+  video.addEventListener('loadedmetadata', async () => {
+    wallStart = performance.now();
+    qa.state = 'playing';
+    await collectCapabilities();
+    update();
+    if ('requestVideoFrameCallback' in video)
+      video.requestVideoFrameCallback(countFrame);
+    try {
+      await video.play();
+    } catch (error) {
+      finish('play-error', error);
+    }
+  });
+  video.addEventListener('timeupdate', () => {
+    if (qa.mode === 'seek' && !seekRequested && video.currentTime >= seekAt) {
+      seekRequested = true;
+      qa.seekEvents.push({
+        event: 'request',
+        from: video.currentTime,
+        to: seekTo,
+      });
+      video.currentTime = seekTo;
+    }
+    update();
+  });
+  video.addEventListener('seeked', () => {
+    qa.seekEvents.push({event: 'seeked', at: video.currentTime});
+    update();
+  });
+  video.addEventListener('ended', () => finish('ended'));
+  video.addEventListener('error', () => {
+    finish('media-error', video.error &&
+        (video.error.message || video.error.code));
+  });
+  setTimeout(() => {
+    if (qa.state !== 'ended')
+      finish('timeout');
+  }, timeoutMs);
+
+  if (!qa.source)
+    finish('harness-error', 'missing src query parameter');
+  else
+    video.src = qa.source;
+</script>
