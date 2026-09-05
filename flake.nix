@@ -112,6 +112,14 @@
             }
           ];
         };
+
+      # Xiaomi Elish (aarch64) 主机在 let 中绑定一次，
+      # 供 nixosConfigurations 与 packages 共用，避免重复评估。
+      chenXiaomiElish = mkHost {
+        system = "aarch64-linux";
+        hostModulesPath = ./hosts/ChenXiaomiElish;
+        homeConfig = import ./home/chen/elish.nix;
+      };
     in
     {
       nixosConfigurations.ChenIdeaCentre = mkHost {
@@ -161,6 +169,13 @@
           "openclaw-2026.6.33"
           "python-2.7.18.12"
         ];
+      };
+
+      # ── Xiaomi Elish (elish, aarch64) ─────────────────────────────────
+      nixosConfigurations.ChenXiaomiElish = chenXiaomiElish;
+
+      packages.aarch64-linux = {
+        chen-xiaomi-elish-bundle = chenXiaomiElish.config.system.build.elishBundle;
       };
     };
 }

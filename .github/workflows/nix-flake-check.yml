@@ -52,12 +52,15 @@ jobs:
       - name: Dry-build NixOS hosts
         run: |
           set -e
-          for host in ChenIdeaCentre ChenWSL Aliyun ChenRadxaOrionO6N ChenAsahiLinux; do
+          for host in ChenIdeaCentre ChenWSL Aliyun ChenRadxaOrionO6N ChenAsahiLinux ChenXiaomiElish; do
             echo "=== Dry-building $host ==="
             nix build \
               ".#nixosConfigurations.$host.config.system.build.toplevel" \
               --dry-run
           done
+
+      - name: Dry-build Xiaomi Elish bundle
+        run: nix build ".#packages.aarch64-linux.chen-xiaomi-elish-bundle" --dry-run
 
       - name: Lint shell scripts
         uses: ludeeus/action-shellcheck@2.0.0
