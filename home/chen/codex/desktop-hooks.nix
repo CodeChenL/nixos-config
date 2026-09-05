@@ -23,10 +23,7 @@ let
         fi
 
         export PATH=${lib.escapeShellArg (lib.makeBinPath [ pkgs.python3 pkgs.nodejs ])}:$PATH
-        "${installScript}" \
-          "${appDir}" \
-          "$HOME/.local/state/codex-desktop-linux" \
-          "$HOME/.local/state/codex-desktop-linux/log"
+        CODEX_LINUX_APP_DIR=${lib.escapeShellArg appDir} "${installScript}"
         ${pkgs.nodejs}/bin/node "${hookTrustUpdater}" hooks \
           "$HOME/.codex/hooks.json" "$HOME/.codex/config.toml" "${reaperHookMarker}"
       fi
