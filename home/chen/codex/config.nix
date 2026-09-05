@@ -126,6 +126,12 @@ let
         CODEX_CLI_PATH = "${pkgs.llm-agents.codex}/bin/codex";
       };
     };
+    mcp_servers.konnect = {
+      args = [ "--config" "${config.home.homeDirectory}/.config/konnect/config.toml" ];
+      command = "${pkgs.konnect}/bin/konnect";
+      startup_timeout_sec = 120;
+      env = { RUST_LOG = "info"; };
+    };
   };
 
   codexConfigTemplate = pkgs.concatText "codex-config.toml" [

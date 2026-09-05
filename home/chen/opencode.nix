@@ -68,6 +68,18 @@ in
         "opencode-feishu-notifier@latest"
       ];
       autoupdate = false;
+      mcp = lib.optionalAttrs
+        (pkgs.konnect != null && (config.home.file.".config/konnect/config.toml".enable or false)) {
+        konnect = {
+          type = "local";
+          command = [
+            "${pkgs.konnect}/bin/konnect"
+            "--config"
+            "${config.home.homeDirectory}/.config/konnect/config.toml"
+          ];
+          enabled = true;
+        };
+      };
       provider = {
         "openai" = {
           options = {
