@@ -1,0 +1,4 @@
+interface:
+  display_name: "Firefox Video QA"
+  short_description: "Verify real Firefox hardware video decoding"
+  default_prompt: "Use $firefox-video-qa to verify whether this Firefox build sustains hardware video decoding for the requested media matrix."
