@@ -11,6 +11,21 @@ let
   radxaLinkrDebuggerCtl =
     inputs.radxa-linkr-debugger.packages.${prev.stdenv.hostPlatform.system}.radxa-linkr-debuggerctl;
 
+  konnect =
+    if prev.stdenv.hostPlatform.system == "x86_64-linux"
+    then import ./pkgs/konnect { inherit inputs final prev; }
+    else null;
+
+  konnect-addon =
+    if prev.stdenv.hostPlatform.system == "x86_64-linux"
+    then prev.kicad.callPackage ./pkgs/konnect-addon { inherit konnect; }
+    else null;
+
+  kicad =
+    if konnect-addon != null
+    then prev.kicad.override { addons = [ konnect-addon ]; }
+    else prev.kicad;
+
   claude-skills = final.runCommand "claude-skills" { } ''
     mkdir -p "$out"
     cp -r ${../skills}/. "$out/"
@@ -22,6 +37,9 @@ let
       echo "error: packaged radxa-linkr-debugger skill not found at $packaged_skill" >&2
       exit 1
     fi
+    ${final.lib.optionalString (konnect != null) ''
+      cp -r "${konnect}/share/agents/skills/." "$out/"
+    ''}
   '';
 
   ngrLibraries = final.lib.unique (with final; [
@@ -181,6 +199,7 @@ in
 
   codex-desktop-api-key = import ./pkgs/codex-desktop-api-key { inherit inputs final prev; };
   freedownloadmanager = import ./pkgs/freedownloadmanager { inherit inputs final prev; };
+  inherit konnect konnect-addon kicad;
   llama-cpp-full = import ./pkgs/llama-cpp-full { inherit inputs final prev; };
   natfrp-service = import ./pkgs/natfrp-service { inherit inputs final prev; };
   pgyvisitor = import ./pkgs/pgyvisitor { inherit inputs final prev; };
