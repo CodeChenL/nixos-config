@@ -63,6 +63,10 @@
       "IP-CIDR6,fc00::/7,DIRECT,no-resolve",
       "IP-CIDR6,fe80::/10,DIRECT,no-resolve",
       "IP-CIDR6,::1/128,DIRECT,no-resolve",
+      // Aliyun / Sub2API 必须直连，避免 Clash 海外代理返回 403/timeout
+      "DOMAIN,chenjaly.cn,DIRECT",
+      "DOMAIN-SUFFIX,chenjaly.cn,DIRECT",
+      "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
       "DOMAIN-KEYWORD,discord,Proxy"
     ];
 
@@ -82,6 +86,20 @@
         group["proxies"] = prependProxygroupsProxies.concat(group["proxies"]);
       });
 
+      return config;
+    }
+  '';
+
+  # Clash Verge 当前激活 profile 使用的 script。
+  xdg.dataFile."io.github.clash-verge-rev.clash-verge-rev/profiles/srXJ1OAcZkXf.js".text = ''
+    const prependRules = [
+      "DOMAIN,chenjaly.cn,DIRECT",
+      "DOMAIN-SUFFIX,chenjaly.cn,DIRECT",
+      "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
+    ];
+
+    function main(config, profileName) {
+      config.rules = prependRules.concat(config.rules || []);
       return config;
     }
   '';
