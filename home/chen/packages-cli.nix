@@ -5,6 +5,7 @@
     # ── AI CLI ──────────────────────────────────────────────────
     radxa-linkr-debuggerctl
     unstable.opencode
+    unstable.opencode-desktop
     unstable.codex
     pkgs.llm-agents.dsh
     poppler-utils
