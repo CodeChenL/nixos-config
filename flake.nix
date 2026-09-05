@@ -41,14 +41,14 @@
     };
 
     codex-desktop-linux = {
-      url = "github:ilysenko/codex-desktop-linux/7994f23cd5c2da23cdc0953367ff6056ebed50b3";
+      url = "github:ilysenko/codex-desktop-linux/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     # OpenCode's provider/model metadata source. Codex catalogs project the
     # locked TOML entries from this input into Codex's model-info JSON shape.
     models-dev = {
-      url = "github:anomalyco/models.dev/81d3fbee80d802dbd24876a9e4372fae6ade386a";
+      url = "github:anomalyco/models.dev/dev";
       flake = false;
     };
 
@@ -58,12 +58,12 @@
     };
 
     radxa-linkr-debugger = {
-      url = "github:xzl01/agent-debugboard?ref=dev";
+      url = "github:xzl01/agent-debugboard/dev";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     rustty = {
-      url = "github:CodeChenL/rustty?ref=dev";
+      url = "github:CodeChenL/rustty/dev";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
