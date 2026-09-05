@@ -64,8 +64,6 @@ in
       plugin = [
         "opencode-mem@latest"
         "oh-my-openagent@latest"
-        "@mohak34/opencode-notifier@latest"
-        "opencode-feishu-notifier@latest"
       ];
       autoupdate = false;
       mcp = lib.optionalAttrs
@@ -292,40 +290,6 @@ in
           )
           mv "$AUTH_TMP" "$AUTH"
           chmod 600 "$AUTH"
-        fi
-  '';
-
-  # feishu-notifier.json: generated from a runtime secret file to keep credentials out of the nix store.
-  home.activation.createOpencodeFeishuNotifierConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        CONFIG="$HOME/.config/opencode/feishu-notifier.json"
-        SECRETS_DIR="$HOME/nixos-config/secrets/opencode"
-        SOURCE="$SECRETS_DIR/feishu-notifier.json"
-
-        if [ -f "$SOURCE" ]; then
-          mkdir -p "$(dirname "$CONFIG")"
-          chmod 700 "$(dirname "$CONFIG")"
-          CONFIG_TMP="$CONFIG.tmp"
-          (
-            umask 077
-            ${pkgs.jq}/bin/jq -ce '
-              if type == "object"
-                 and (.appId | type == "string" and length > 0)
-                 and (.appSecret | type == "string" and length > 0)
-                 and (.receiverId | type == "string" and length > 0)
-                 and (.receiverType == "user_id" or .receiverType == "open_id" or .receiverType == "chat_id")
-              then {
-                appId: .appId,
-                appSecret: .appSecret,
-                receiverType: .receiverType,
-                receiverId: .receiverId
-              }
-              else error("Invalid Feishu notifier config")
-              end
-            ' "$SOURCE" \
-              > "$CONFIG_TMP"
-          )
-          mv "$CONFIG_TMP" "$CONFIG"
-          chmod 600 "$CONFIG"
         fi
   '';
 
