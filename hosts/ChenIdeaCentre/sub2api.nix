@@ -10,6 +10,7 @@ let
   databasePasswordSourceFile = "${secretSourceDir}/database-password";
   jwtSecretSourceFile = "${secretSourceDir}/jwt-secret";
   redisPasswordSourceFile = "${secretSourceDir}/redis-password";
+  totpEncryptionKeySourceFile = "${secretSourceDir}/totp-encryption-key";
   secretsDir = "/var/lib/sub2api/secrets";
 
   # setup script：初始化 secrets 和数据库
@@ -31,6 +32,7 @@ let
     database_password_source=${lib.escapeShellArg databasePasswordSourceFile}
     jwt_secret_source=${lib.escapeShellArg jwtSecretSourceFile}
     redis_password_source=${lib.escapeShellArg redisPasswordSourceFile}
+    totp_encryption_key_source=${lib.escapeShellArg totpEncryptionKeySourceFile}
 
     # Generate or import secrets
     ensure_secret() {
@@ -46,12 +48,14 @@ let
     ensure_secret "$database_password_source" db-password
     ensure_secret "$jwt_secret_source" jwt-secret
     ensure_secret "$redis_password_source" redis-password
+    ensure_secret "$totp_encryption_key_source" totp-encryption-key
 
     # Read secrets
     ADMIN_PASSWORD=$(tr -d '\r\n' < ${secretsDir}/admin-password)
     DB_PASSWORD=$(cat ${secretsDir}/db-password)
     JWT_SECRET=$(cat ${secretsDir}/jwt-secret)
     REDIS_PASSWORD=$(cat ${secretsDir}/redis-password)
+    TOTP_ENCRYPTION_KEY=$(tr -d '\r\n' < ${secretsDir}/totp-encryption-key)
 
     # Set PostgreSQL password (run as postgres user)
     ${lib.optionalString (!cfg.externalDatabase) ''
@@ -64,6 +68,7 @@ ADMIN_PASSWORD=$ADMIN_PASSWORD
 DATABASE_PASSWORD=$DB_PASSWORD
 JWT_SECRET=$JWT_SECRET
 REDIS_PASSWORD=$REDIS_PASSWORD
+TOTP_ENCRYPTION_KEY=$TOTP_ENCRYPTION_KEY
 EOF
     chmod 600 ${secretsDir}/env
   '';
@@ -154,7 +159,10 @@ in
       requires = [ "sub2api-setup.service" ];
       wantedBy = [ "multi-user.target" ];
 
-      path = [ pkgs.openssl ];
+      path = [
+        pkgs.openssl
+        pkgs.postgresql
+      ];
 
       serviceConfig = sub2apiConfig;
 

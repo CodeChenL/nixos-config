@@ -45,6 +45,16 @@ Sub2API 管理员密码文件：
 /home/chen/nixos-config/secrets/sub2api/admin-password
 ```
 
+Sub2API 的加密密钥（TOTP/支付/S3 等加密使用）必须固定：
+
+```text
+/home/chen/nixos-config/secrets/sub2api/totp-encryption-key
+```
+
+本模块从该文件读取并通过 `TOTP_ENCRYPTION_KEY` 注入服务；源文件缺失时，
+setup 服务会失败，不会自动补建密钥。应用若绕过本模块、在未设置该环境变量
+的情况下启动，可能生成临时密钥，使已有密文或跨实例解密不可用。
+
 ## Sub2API
 
 当前配置状态：`services.sub2api.enable = true`。
@@ -84,8 +94,10 @@ PGPASSWORD="$DBPW" pg_dump \
 迁移前 Aliyun 的旧库保留在 `sub2api_pre_restore`，迁移前的 dump 位于
 `/tmp/sub2api-aliyun-before.*.dump`（远端，权限为 postgres:postgres）。
 
-当前两端日志都会提示 `TOTP_ENCRYPTION_KEY` 自动生成；这不影响普通 API，
-但如需支付恢复 token 跨实例生效，应在两端声明同一个 `TOTP_ENCRYPTION_KEY`。
+两端必须持久化并注入同一个 `TOTP_ENCRYPTION_KEY`，不能依赖每次启动自动生成。
+升级或迁移前应确认它与已有加密数据使用的密钥一致；不要用新生成的密钥
+覆盖旧密钥，否则已有密文可能无法解密。密钥从运行时 secret 文件加载，
+不得写入本仓库或 Nix store；两端是否已部署相同密钥需分别验证。
 
 注意：Aliyun 的 `5432` 和 `6379` 向公网开放，当前依赖密码认证；
 如果允许按来源网段收紧，优先用防火墙只放行 ChenIdeaCentre 的公网出口 IP。
