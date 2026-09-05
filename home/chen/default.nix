@@ -4,6 +4,7 @@
   imports = [
     ./common.nix
     ./packages.nix
+    ./kicad.nix
   ];
 
   # 周期性清理 home-manager generations：保留 30 天内的，最旧的自动失效。

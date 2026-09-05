@@ -179,7 +179,6 @@ in
     bambu-studio
     orca-slicer
     freecad
-    kicad
     librecad
 
     # ── 远程桌面 ──────────────────────────────────────────────
