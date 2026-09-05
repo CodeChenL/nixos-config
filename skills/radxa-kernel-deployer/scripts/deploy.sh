@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/helpers.sh"
+source "${SCRIPT_DIR}/installation.sh"
 
 # === 参数解析 ===
 HOSTS="" USER="radxa" PASSWORD="radxa" REMOTE_DIR="~" REBOOT="true"
@@ -55,24 +56,21 @@ detect_version() {
 # === 步骤 2: 定位 .deb ===
 locate_debs() {
   local version="$1"
-  local image_deb header_deb
-  image_deb=$(ls ../linux-image*"${version}"* 2>/dev/null | head -n1 || true)
-  header_deb=$(ls ../linux-headers*"${version}"* 2>/dev/null | head -n1 || true)
-
-  if [[ -n "$image_deb" && -n "$header_deb" ]]; then
-    echo "$image_deb $header_deb"
-  else
-    local fallback
-    fallback=$(ls ../linux-*"${version}"* 2>/dev/null | tr '\n' ' ')
-    [[ -n "$fallback" ]] || { echo "ERROR: 上层目录未找到版本 ${version} 的 .deb" >&2; return 1; }
-    echo "$fallback"
-  fi
+  local deb
+  local -a found=()
+  for deb in ../linux-image*"${version}"*.deb ../linux-headers*"${version}"*.deb; do
+    [[ -f "$deb" ]] && found+=("$deb")
+  done
+  [[ ${#found[@]} -gt 0 ]] || { echo "ERROR: 未找到版本 ${version} 的 .deb" >&2; return 1; }
+  printf '%s\n' "${found[@]}"
 }
 
 # === 步骤 3-6: 部署单台主机 ===
 deploy_one() {
-  local host="$1" version="$2" debs_str="$3"
-  local -a debs=($debs_str)
+  local host="$1" targets="$2" debs_str="$3" manifest="$4"
+  local -a debs
+  mapfile -t debs <<< "$debs_str"
+  local has_dkms=false dkms_before="" probe_status arch=""
 
   echo "=== 部署 ${host} ==="
 
@@ -82,24 +80,58 @@ deploy_one() {
     remote_dir="/home/${USER}${remote_dir:1}"
   fi
 
+  if remote_has_dkms "${USER}@${host}"; then
+    has_dkms=true
+    dkms_before=$(remote_dkms_status "${USER}@${host}") || return 1
+    arch=$(sudo_remote "${USER}@${host}" "uname -m") || return 1
+    valid_dkms_token "$arch" || return 1
+    echo "[DKMS] 安装前状态: ${dkms_before:-<无 DKMS 模块>}"
+  else
+    probe_status=$?
+    [[ "$probe_status" -eq 3 ]] || { echo "[FAIL] DKMS 探测失败: ${host}" >&2; return 1; }
+  fi
+
   # 传输
   retry_scp "${debs[@]}" "${USER}@${host}:${remote_dir}" || { echo "[FAIL] 传输失败: ${host}"; return 1; }
 
   # 安装
-  local pkg_args
-  pkg_args=$(printf "${remote_dir}/%s " "${debs[@]##*/}")
-  sudo_remote "${USER}@${host}" "dpkg -i ${pkg_args} || apt -f install -y" || { echo "[FAIL] 安装失败: ${host}"; return 1; }
+  install_selected_packages "${USER}@${host}" "$remote_dir" "${debs[@]}" || return 1
+  verify_selected_packages "${USER}@${host}" "$manifest" "$targets" || return 1
+
+  if [[ "$has_dkms" == false ]]; then
+    if remote_has_dkms "${USER}@${host}"; then
+      has_dkms=true
+      arch=$(sudo_remote "${USER}@${host}" "uname -m") || return 1
+      valid_dkms_token "$arch" || return 1
+    else
+      probe_status=$?
+      [[ "$probe_status" -eq 3 ]] || { echo "[FAIL] DKMS 探测失败: ${host}" >&2; return 1; }
+    fi
+  fi
+  if [[ "$has_dkms" == true ]]; then
+    ensure_target_dkms "${USER}@${host}" "$dkms_before" "$targets" "$arch" || return 1
+  fi
 
   # 安装后验证
-  sshpass -e ssh -o StrictHostKeyChecking=no "${USER}@${host}" \
-    'dpkg -l | grep -E "linux-image|linux-headers"; echo "---"; uname -r'
+  local running reboot_status
+  running=$(remote_running_kernel "${USER}@${host}") || return 1
+  echo "[INFO] 当前运行内核: $running"
 
   # 重启
   if [[ "$REBOOT" == "true" ]]; then
     echo "[INFO] 重启 ${host}..."
-    sudo_remote "${USER}@${host}" "reboot" || true
-    wait_for_device "${USER}@${host}"
-    sshpass -e ssh -o StrictHostKeyChecking=no "${USER}@${host}" 'uname -r'
+    if sudo_remote "${USER}@${host}" "reboot"; then
+      reboot_status=0
+    else
+      reboot_status=$?
+      [[ "$reboot_status" -eq 255 ]] || { echo "[FAIL] 重启命令失败: $host" >&2; return 1; }
+    fi
+    wait_for_device "${USER}@${host}" || return 1
+    running=$(remote_running_kernel "${USER}@${host}") || return 1
+    [[ $'\n'"$targets"$'\n' == *$'\n'"$running"$'\n'* && -n "$running" ]] || {
+      echo "[FAIL] 重启后内核不属于目标集合: $running" >&2; return 1;
+    }
+    verify_selected_packages "${USER}@${host}" "$manifest" "$targets" || return 1
   fi
 
   echo "[OK] ${host} 部署完成"
@@ -111,13 +143,17 @@ echo "[INFO] 检测到版本: ${version}"
 
 debs_str=$(locate_debs "$version")
 echo "[INFO] 部署包: ${debs_str}"
+mapfile -t debs <<< "$debs_str"
+targets=$(target_kernel_releases "$version" "${debs[@]}")
+manifest=$(selected_package_manifest "${debs[@]}")
+echo "[INFO] 目标内核 release: ${targets}"
 
 IFS=',' read -ra host_list <<< "$HOSTS"
 failed_hosts=()
 
 for host in "${host_list[@]}"; do
   host=$(echo "$host" | xargs)  # trim
-  if ! deploy_one "$host" "$version" "$debs_str"; then
+  if ! deploy_one "$host" "$targets" "$debs_str" "$manifest"; then
     failed_hosts+=("$host")
     echo "[WARN] ${host} 部署失败，继续下一个"
   fi
