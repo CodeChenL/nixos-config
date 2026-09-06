@@ -60,7 +60,7 @@ in
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      model = "openai/gpt-5.6-sol";
+      model = "openai/gpt-6-astra";
       plugin = [
         "opencode-mem@latest"
         "oh-my-openagent@beta"
@@ -100,7 +100,7 @@ in
       agents = {
         oracle = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -124,7 +124,7 @@ in
         };
         multimodal-looker = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
@@ -132,7 +132,7 @@ in
         };
         metis = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -140,7 +140,7 @@ in
         };
         momus = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -150,7 +150,7 @@ in
           # FIXME(OMO beta.43): Junior's factory ignores normalized reasoning and
           # registers medium. Keep xhigh intent until upstream fixes the factory.
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -160,7 +160,7 @@ in
       categories = {
         visual-engineering = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
@@ -168,7 +168,7 @@ in
         };
         ultrabrain = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -176,7 +176,7 @@ in
         };
         deep = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
@@ -184,7 +184,7 @@ in
         };
         artistry = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
@@ -208,7 +208,7 @@ in
         };
         unspecified-high = {
           models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
+            { model = "openai/gpt-6-astra"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
