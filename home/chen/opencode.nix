@@ -108,7 +108,7 @@ in
         };
         librarian = {
           models = [
-            { model = "openai/gpt-5.6-luna"; reasoning = "xhigh"; }
+            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
@@ -116,7 +116,7 @@ in
         };
         explore = {
           models = [
-            { model = "openai/gpt-5.6-luna"; reasoning = "xhigh"; }
+            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
@@ -192,7 +192,7 @@ in
         };
         quick = {
           models = [
-            { model = "openai/gpt-5.6-luna"; reasoning = "xhigh"; }
+            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
@@ -200,7 +200,7 @@ in
         };
         unspecified-low = {
           models = [
-            { model = "openai/gpt-5.6-luna"; reasoning = "xhigh"; }
+            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
             { model = "deepseek/deepseek-v4-flash-vision-exp"; reasoning = "max"; }
             { model = "minimax-cn-coding-plan/MiniMax-M3"; }
             { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
