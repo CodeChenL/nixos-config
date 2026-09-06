@@ -8,8 +8,8 @@
 let
   buildPkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
   espSize = 1000341504;
-  espSectors = 1953792;
-  sectorSize = 512;
+  espSectors = 244224;
+  sectorSize = 4096;
   expectedDtbName = "qcom/sm8250-xiaomi-elish-csot.dtb";
   toplevel = toString config.system.build.toplevel;
   systemdBoot = "${config.systemd.package}/lib/systemd/boot/efi/systemd-bootaa64.efi";
@@ -109,7 +109,7 @@ let
       test "$initrd_destination" != "$devicetree_destination" || fail "initrd and devicetree destinations collide"
 
       ${buildPkgs.coreutils}/bin/truncate --size="$image_size" "$out"
-      ${buildPkgs.dosfstools}/bin/mkfs.vfat -F 32 -S 512 --invariant -i 454c4953 -n NIXOS_ESP "$out"
+      ${buildPkgs.dosfstools}/bin/mkfs.vfat -F 32 -S "$sector_size" -s 1 --invariant -i 454c4953 -n NIXOS_ESP "$out"
 
       ${buildPkgs.coreutils}/bin/install -Dm0644 "$kernel" "contents/$kernel_destination"
       ${buildPkgs.coreutils}/bin/install -Dm0644 "$initrd" "contents/$initrd_destination"
