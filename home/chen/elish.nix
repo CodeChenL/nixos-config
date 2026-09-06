@@ -1,12 +1,28 @@
-{ ... }:
+{ pkgs, ... }:
 
 {
-  home.username = "chen";
-  home.homeDirectory = "/home/chen";
-  home.stateVersion = "25.11";
+  imports = [
+    ./default.nix
+    ./packages-cli.nix
+    ./lsp.nix
+  ];
 
-  programs.home-manager.enable = true;
-  programs.bash.enable = true;
-  programs.git.enable = true;
-  programs.htop.enable = true;
+  disabledModules = [
+    ./dev.nix
+    ./packages.nix
+    ./kicad.nix
+  ];
+
+  home.packages = with pkgs; [
+    firefox
+    chromium
+    libreoffice-fresh
+    gimp
+    mpv
+    remmina
+    scrcpy
+    kdePackages.yakuake
+    kicad
+    unstable.vscode
+  ];
 }
