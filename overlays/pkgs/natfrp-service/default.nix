@@ -7,7 +7,7 @@ final.callPackage (
       version = "3.1.8";
       arch = if final.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64";
       hash = if final.stdenv.hostPlatform.isAarch64
-        then "sha256-O27KIOwCoBEZzIzFnGMs9DSG6ZeY/Lb02zhXUkLNuUw="
+        then "sha256-Jz7ZcURkkRw7n/3Lli4m7PTZOLdPgG06aNTtg04I7X8="
         else "sha256-kCJm2kdos43WoikFoFDhDVkU7EjlFoK1+4ASG/CvUTA=";
     in
     stdenvNoCC.mkDerivation {
