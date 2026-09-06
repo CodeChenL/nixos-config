@@ -1,13 +1,12 @@
 {
   config,
-  inputs,
   lib,
   pkgs,
   ...
 }:
 
 let
-  buildPkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+  buildPkgs = config.hardware.xiaomiElish.buildPkgs;
   ablBootImages = config.system.build.ablBootImages;
   espImage = config.system.build.elishEspImage;
   espName = "ChenXiaomiElish-esp.fat32";
@@ -33,6 +32,18 @@ in
 assert builtins.length checksumNames == 7;
 assert builtins.length (lib.unique checksumNames) == 7;
 {
+  options.hardware.xiaomiElish.buildPkgs = lib.mkOption {
+    type = lib.types.pkgs;
+    default = pkgs.buildPackages;
+    defaultText = lib.literalExpression "pkgs.buildPackages";
+    description = ''
+      Native packages for ESP, rootfs, bundle and ABL image assembly. Defaults
+      to the declared Nixpkgs build platform, not the evaluating machine.
+      Override with a native package set for an external assembler; target
+      kernel, initrd, device trees and systemd-boot remain unchanged.
+    '';
+  };
+
   config.system.build.elishBundle = buildPkgs.runCommand "chen-xiaomi-elish-bundle" { } ''
     set -eu
 

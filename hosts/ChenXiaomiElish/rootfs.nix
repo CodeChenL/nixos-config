@@ -2,15 +2,12 @@
   config,
   lib,
   modulesPath,
-  inputs,
   ...
 }:
 
 let
   cfg = config.hardware.xiaomiElish.rootfs;
-  # The image is architecture-neutral, but mkfs.btrfs must run natively on
-  # the x86_64 build workstation; its user namespace cannot run under QEMU.
-  buildPkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+  buildPkgs = config.hardware.xiaomiElish.buildPkgs;
   # btrfs-progs >= 6.10 bypasses fakeroot while importing --rootdir via nftw.
   # This is the upstream nixpkgs fix (NixOS/nixpkgs#361051) expressed at the
   # call site until the pinned nixpkgs branch contains it.

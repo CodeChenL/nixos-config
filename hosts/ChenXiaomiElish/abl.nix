@@ -1,12 +1,12 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 
 let
   cfg = config.hardware.xiaomiElish.abl;
+  buildPkgs = config.hardware.xiaomiElish.buildPkgs;
   kernel = config.system.build.kernel;
   kernelImage = "${kernel}/${config.system.boot.loader.kernelFile}";
   initialRamdisk = "${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile}";
@@ -29,7 +29,7 @@ in
     };
   };
 
-  config.system.build.ablBootImages = pkgs.runCommand "xiaomi-elish-abl-boot-images" { } ''
+  config.system.build.ablBootImages = buildPkgs.runCommand "xiaomi-elish-abl-boot-images" { } ''
     set -eu
 
     kernel_image=${lib.escapeShellArg kernelImage}
@@ -42,7 +42,7 @@ in
     test -f "$dtb_directory/sm8250-xiaomi-elish-csot.dtb"
 
     mkdir -p "$out"
-    ${pkgs.gzip}/bin/gzip -n -c "$kernel_image" > Image.gz
+    ${buildPkgs.gzip}/bin/gzip -n -c "$kernel_image" > Image.gz
 
     build_image() {
       panel="$1"
@@ -52,7 +52,7 @@ in
       combined_kernel="Image.gz-''${panel}"
       cat Image.gz "$dtb" > "$combined_kernel"
 
-      ${pkgs.mkbootimg-osm0sis}/bin/mkbootimg \
+      ${buildPkgs.mkbootimg-osm0sis}/bin/mkbootimg \
         --kernel "$combined_kernel" \
         --ramdisk "$initial_ramdisk" \
         --base 0x0 \

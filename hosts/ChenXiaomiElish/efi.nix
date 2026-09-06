@@ -1,12 +1,11 @@
 {
   config,
-  inputs,
   lib,
   ...
 }:
 
 let
-  buildPkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+  buildPkgs = config.hardware.xiaomiElish.buildPkgs;
   espSize = 1000341504;
   espSectors = 244224;
   sectorSize = 4096;
