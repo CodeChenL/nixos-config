@@ -1,9 +1,9 @@
 { inputs, final, prev }:
 let
-  version = "0.2.0";
+  version = "0.2.1";
   src = prev.fetchurl {
     url = "https://github.com/Wei-Shaw/sub2api/releases/download/v${version}/sub2api_${version}_linux_amd64.tar.gz";
-    hash = "sha256-LYqhox3onp/PupmzMw4g2hGwdgpiRH8Koys7Xp9l37Q=";
+    hash = "sha256-BtXObkvnwgQmNdRV1q4bWZCj/HaSQWkI0Ns5WHkwY2M=";
   };
 in
 prev.stdenv.mkDerivation {
