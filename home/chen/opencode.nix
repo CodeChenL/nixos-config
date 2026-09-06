@@ -222,7 +222,6 @@ in
           ];
         };
       };
-        codegraph = {};
       };
       _migrations = [
         "2026-07-codex-config-jsonc"
