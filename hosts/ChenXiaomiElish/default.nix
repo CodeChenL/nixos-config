@@ -10,6 +10,7 @@ in
     ../common.nix
     ../desktop.nix
     ./abl.nix
+    ./bluetooth.nix
     ./bundle.nix
     ./console.nix
     ./device-integration.nix
