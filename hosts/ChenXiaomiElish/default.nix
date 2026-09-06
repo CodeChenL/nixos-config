@@ -31,6 +31,17 @@ in
   # 避免它在这里合成 boot.mount/boot.automount。
   systemd.generators."systemd-gpt-auto-generator" = "/dev/null";
 
+  boot.tmp.useTmpfs = false;
+  boot.devShmSize = "512M";
+  boot.runSize = "256M";
+  services.logind.settings.Login.RuntimeDirectorySize = "128M";
+  security.wrapperDirSize = "128M";
+
+  nix.settings = {
+    max-jobs = 1;
+    cores = 2;
+  };
+
   users.users.root.hashedPassword = rootPasswordHash;
   # 万一 initrd 再次进入 emergency，允许用同样的 root 密码进入 shell 排障。
   boot.initrd.systemd.emergencyAccess = rootPasswordHash;
