@@ -8,6 +8,7 @@ in
 {
   imports = [
     ../common.nix
+    ../desktop.nix
     ./abl.nix
     ./bundle.nix
     ./console.nix
@@ -65,12 +66,6 @@ in
     };
   };
 
-  # KDE Plasma 6 (SDDM/Wayland)；Plasma 自带 networkmanager 的 plasma-nm。
-  services.desktopManager.plasma6.enable = true;
-  services.displayManager.sddm = {
-    enable = true;
-    wayland.enable = true;
-  };
   services.displayManager.autoLogin.enable = false;
 
   # Elish 的 msm DRM 需要 Mesa 的用户态驱动路径；不启用则 KWin 找不到
