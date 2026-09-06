@@ -12,6 +12,7 @@ in
     ./abl.nix
     ./bundle.nix
     ./console.nix
+    ./device-integration.nix
     ./efi.nix
     ./hardware-configuration.nix
     ./rootfs.nix
