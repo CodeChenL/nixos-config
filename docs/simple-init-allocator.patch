@@ -1,0 +1,132 @@
+--- a/GPLDrivers/Library/SimpleInit/libs/compatible/malloc.c
++++ b/GPLDrivers/Library/SimpleInit/libs/compatible/malloc.c
+@@ -96,6 +96,7 @@
+ 		RetVal  = NULL;
+ 		errno   = ENOMEM;
+ 		DEBUG((DEBUG_ERROR, "\nERROR malloc: Size overflow\n"));
++		return NULL;
+ 	}
+ 
+ 	NodeSize = (UINTN)(Size + sizeof(CPOOL_HEAD));
+@@ -113,7 +114,7 @@
+ 		if(!Head)abort();
+ 		// Fill out the pool header
+ 		Head->Signature = CPOOL_HEAD_SIGNATURE;
+-		Head->Size      = NodeSize;
++		Head->Size      = Size;
+ 
+ 		// Add this node to the list
+ 		(void)InsertTailList(&MemPoolHead, (LIST_ENTRY *)Head);
+@@ -142,6 +143,10 @@
+ **/
+ weak_decl void *calloc(size_t num, size_t size){
+ 	void*ret=NULL;
++	if(size!=0&&num>MAX_UINTN/size){
++		errno=ENOMEM;
++		return NULL;
++	}
+ 	size_t len=num*size;
+ 	if(len!=0) {
+ 		ret=malloc(len);
+@@ -167,21 +172,20 @@
+ {
+ 	CPOOL_HEAD   *Head;
+ 
++	if(Ptr == NULL)return;
+ 	Head = BASE_CR(Ptr, CPOOL_HEAD, Data);
+ 	assert(Head != NULL);
+ 	DEBUG((DEBUG_POOL, "free(%p): Head: %p\n", Ptr, Head));
+ 
+-	if(Ptr != NULL) {
+-		if (Head->Signature == CPOOL_HEAD_SIGNATURE) {
+-			(void) RemoveEntryList((LIST_ENTRY *)Head);   // Remove this node from the malloc pool
+-			(void) gBS->FreePool (Head);                  // Now free the associated memory
+-		}
+-		else {
+-			errno = EFAULT;
+-			DEBUG((DEBUG_ERROR, "ERROR free(0x%p): Signature is 0x%8X, expected 0x%8X\n",
+-				Ptr, Head->Signature, CPOOL_HEAD_SIGNATURE));
+-			abort();
+-		}
++	if (Head->Signature == CPOOL_HEAD_SIGNATURE) {
++		(void) RemoveEntryList((LIST_ENTRY *)Head);   // Remove this node from the malloc pool
++		(void) gBS->FreePool (Head);                  // Now free the associated memory
++	}
++	else {
++		errno = EFAULT;
++		DEBUG((DEBUG_ERROR, "ERROR free(0x%p): Signature is 0x%8X, expected 0x%8X\n",
++			Ptr, Head->Signature, CPOOL_HEAD_SIGNATURE));
++		abort();
+ 	}
+ 	DEBUG((DEBUG_POOL, "free Done\n"));
+ }
+@@ -234,46 +238,38 @@
+ 	void       *RetVal = NULL;
+ 	CPOOL_HEAD *Head    = NULL;
+ 	size_t      OldSize = 0;
+-	size_t      NewSize;
+ 	size_t      NumCpy;
+ 
++	if(Ptr == NULL)return ReqSize>0?malloc(ReqSize):NULL;
++	if(ReqSize == 0){
++		free(Ptr);
++		return NULL;
++	}
++
+ 	// Find out the size of the OLD memory region
+-	if( Ptr != NULL) {
+-		Head = BASE_CR (Ptr, CPOOL_HEAD, Data);
+-		assert(Head != NULL);
+-		if (Head->Signature != CPOOL_HEAD_SIGNATURE) {
+-			errno = EFAULT;
+-			DEBUG((DEBUG_ERROR, "ERROR realloc(0x%p): Signature is 0x%8X, expected 0x%8X\n",
+-				Ptr, Head->Signature, CPOOL_HEAD_SIGNATURE));
+-			return NULL;
+-		}
+-		OldSize = (size_t)Head->Size;
++	Head = BASE_CR (Ptr, CPOOL_HEAD, Data);
++	assert(Head != NULL);
++	if (Head->Signature != CPOOL_HEAD_SIGNATURE) {
++		errno = EFAULT;
++		DEBUG((DEBUG_ERROR, "ERROR realloc(0x%p): Signature is 0x%8X, expected 0x%8X\n",
++			Ptr, Head->Signature, CPOOL_HEAD_SIGNATURE));
++		return NULL;
+ 	}
++	OldSize = (size_t)Head->Size;
+ 
+ 	// At this point, Ptr is either NULL or a valid pointer to an allocated space
+-	NewSize = (size_t)(ReqSize + (sizeof(CPOOL_HEAD)));
+-
+-	if( ReqSize > 0) {
+-		RetVal = malloc(NewSize); // Get the NEW memory region
+-		if( Ptr != NULL) {          // If there is an OLD region...
+-			if( RetVal != NULL) {     // and the NEW region was successfully allocated
+-				NumCpy = OldSize;
+-				if( OldSize > NewSize) {
+-					NumCpy = NewSize;
+-				}
+-				(VOID)CopyMem( RetVal, Ptr, NumCpy);  // Copy old data to the new region.
+-				free( Ptr);                           // and reclaim the old region.
+-			}
+-			else {
+-				errno = ENOMEM;
+-			}
+-		}
++	if(ReqSize == OldSize)return Ptr;
++	RetVal = malloc(ReqSize); // Get the NEW memory region
++	if( RetVal != NULL) {     // and the NEW region was successfully allocated
++		NumCpy = MIN(OldSize,ReqSize);
++		(VOID)CopyMem( RetVal, Ptr, NumCpy);  // Copy old data to the new region.
++		free( Ptr);                           // and reclaim the old region.
+ 	}
+ 	else {
+-		free( Ptr);                           // Reclaim the old region.
++		errno = ENOMEM;
+ 	}
+-	DEBUG((DEBUG_POOL, "0x%p = realloc(%p, %d): Head: %p NewSz: %d\n",
+-		RetVal, Ptr, ReqSize, Head, NewSize));
++	DEBUG((DEBUG_POOL, "0x%p = realloc(%p, %d): Head: %p\n",
++		RetVal, Ptr, ReqSize, Head));
+ 
+ 	return RetVal;
+ }
