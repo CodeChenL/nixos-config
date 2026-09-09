@@ -45,8 +45,9 @@ let
   };
   authActivations = import ./auth.nix { inherit lib pkgs; };
 in
-
-{
+# Codex desktop resources only exist on hosts where codexDesktopLinux is
+# enabled (x86_64-only upstream). Keep the whole module inert elsewhere.
+lib.mkIf (config.programs.codexDesktopLinux.enable or false) {
   # Global Codex guidance. Codex loads this from $CODEX_HOME/AGENTS.md
   # before applying repository-local instructions.
   home.file = {

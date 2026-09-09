@@ -69,6 +69,31 @@ let
       apiKeyEnv = "MINIMAX_CN_API_KEY";
     };
   });
+
+  # Keep only packages that can actually be instantiated on the current
+  # system.  This is more reliable than reading `meta.platforms`: overlays
+  # like wpsoffice-cn (a symlinkJoin) drop the upstream platforms metadata,
+  # while the underlying package still throws for unsupported systems.
+  supportedOnCurrentSystem = p:
+    (builtins.tryEval p.drvPath).success;
+
+  # codex-desktop-linux only ships x86_64 outputs; keep the desktop client
+  # enabled where it is buildable and skip it elsewhere.
+  codexDesktopEnabled = lib.elem pkgs.stdenv.hostPlatform.system [ "x86_64-linux" ];
+
+  # nixpkgs marks qq as aarch64-capable, but this override pins an amd64-only
+  # deb download; reflect the real support so ARM hosts filter it out.
+  linuxqq = (pkgs.master.qq.overrideAttrs (_: {
+    version = "3.2.32-2026-07-30";
+    src = pkgs.fetchurl {
+      url = "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/c97651b2/QQ_3.2.32_260730_amd64_01.deb";
+      hash = "sha256-ga4rhULvUxH8cuz1PJpSOSPINFacew2lLgv0Nguctfk=";
+    };
+  })).overrideAttrs (old: {
+    meta = (old.meta or { }) // {
+      platforms = [ "x86_64-linux" ];
+    };
+  });
 in
 
 {
@@ -78,8 +103,8 @@ in
     inputs.codex-desktop-linux.homeManagerModules.default
   ];
 
-  # ── Codex Desktop（仅此桌面主机）──────────────────────────────────
-  programs.codexDesktopLinux = {
+  # ── Codex Desktop（仅桌面主机；codex-desktop-linux 仅提供 x86_64 构建）──
+  programs.codexDesktopLinux = lib.mkIf codexDesktopEnabled {
     enable = true;
     package = codexDesktopPackage;
     cliPackage = pkgs.llm-agents.codex;
@@ -122,7 +147,7 @@ in
     ]}
   '';
 
-  home.packages = with pkgs; [
+  home.packages = lib.filter supportedOnCurrentSystem (with pkgs; [
     # ── 浏览器 ────────────────────────────────────────────────
     firefox
     google-chrome
@@ -136,13 +161,7 @@ in
     pkgs.nur.repos.xddxdd.dingtalk
     feishu
     telegram-desktop
-    (master.qq.overrideAttrs (_: {
-      version = "3.2.32-2026-07-30";
-      src = fetchurl {
-        url = "https://qqdl.gtimg.cn/qqfile/QQNT/9.9.33/release/c97651b2/QQ_3.2.32_260730_amd64_01.deb";
-        hash = "sha256-ga4rhULvUxH8cuz1PJpSOSPINFacew2lLgv0Nguctfk=";
-      };
-    })) # linuxqq
+    linuxqq
     unstable.wechat                 # 微信
     element-desktop
     thunderbird
@@ -176,7 +195,6 @@ in
     dxvk
 
     # ── 3D 打印 / CAD ─────────────────────────────────────────────
-    bambu-studio
     orca-slicer
     freecad
     librecad
@@ -185,7 +203,6 @@ in
     remmina
     freerdp
     scrcpy
-    rustdesk
     putty
 
     # ── 代理 / VPN（桌面专用）──────────────────────────────────
@@ -243,9 +260,15 @@ in
 
     # ── AI / LLM ─────────────────────────────────────────────────
     ollama
-    llama-cpp-full  # llama.cpp with OpenVINO, CUDA, Vulkan, OpenCL, BLAS support
   ] ++ pkgs.lib.optionals (!(osConfig.services.linyaps.enable or false)) [
     # 容器化应用运行环境
     linyaps
-  ];
+  ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
+    # llama.cpp with OpenVINO, CUDA, Vulkan, OpenCL, BLAS support;
+    # heavy native build chain, desktop-only host packages.
+    llama-cpp-full
+    # Bambu Studio and RustDesk are desktop-only host packages.
+    bambu-studio
+    rustdesk
+  ]);
 }
