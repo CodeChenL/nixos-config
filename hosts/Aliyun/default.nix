@@ -14,10 +14,9 @@ in
 
   networking.hostName = "ChenAliyun";
   networking.useDHCP = true;
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [ 22 5432 6379 ];
-  };
+  # Aliyun 不导入 ../common.nix，故在此单独声明：防火墙禁用，所有接口全部放行。
+  # 注意：公网暴露仅限于阿里云安全组层面，请妥善维护安全组规则。
+  networking.firewall.enable = false;
 
   # WireGuard：Aliyun 作为 OpenWrt `chen` 隧道的 ALIYUN peer。
   # 本端私钥使用 OpenWrt secret 中的 WG_CHEN_PEER1_PRIVATE_KEY。

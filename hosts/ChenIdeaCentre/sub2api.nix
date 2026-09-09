@@ -193,8 +193,5 @@ in
       createHome = true;
     };
     users.groups.sub2api = {};
-
-    # Firewall
-    networking.firewall.allowedTCPPorts = [ port ];
   };
 }

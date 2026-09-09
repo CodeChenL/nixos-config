@@ -106,10 +106,6 @@ in
 {
   networking = {
     networkmanager.unmanaged = [ "interface-name:usb0" ];
-    firewall.interfaces.usb0 = {
-      allowedTCPPorts = [ 22 ];
-      allowedUDPPorts = [ 67 ];
-    };
   };
 
   services = {
@@ -129,8 +125,6 @@ in
         ];
       };
     };
-
-    openssh.openFirewall = false;
   };
 
   systemd.services = {
