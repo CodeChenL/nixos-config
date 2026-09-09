@@ -9,7 +9,6 @@
 
   disabledModules = [
     ./dev.nix
-    ./packages.nix
     ./kicad.nix
   ];
 
