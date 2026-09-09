@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 {
   imports = [
@@ -33,5 +33,21 @@
   home.file.".agents/skills".source = pkgs.claude-skills;
   home.packages = [ pkgs.tcpdump ];
   xdg.enable = true;
-  xdg.configFile."htop/htoprc".source = ./htoprc;
+
+  # htoprc: declare the baseline in the repo, but deploy it as a writable copy.
+  # The XDG config source above would create a read-only /nix/store symlink that
+  # htop cannot overwrite when settings change in the UI. Instead, install the
+  # declared file as a regular file, and only replace it when it is still the
+  # managed symlink or does not exist, so user tweaks survive a rebuild.
+  home.activation.writeHtoprc = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    target="$HOME/.config/htop/htoprc"
+    ${pkgs.coreutils}/bin/mkdir -p "$(dirname "$target")"
+    if [ ! -e "$target" ]; then
+      ${pkgs.coreutils}/bin/install -m 600 ${./htoprc} "$target"
+    elif [ -L "$target" ]; then
+      ${pkgs.coreutils}/bin/rm -f "$target"
+      ${pkgs.coreutils}/bin/install -m 600 ${./htoprc} "$target"
+      echo "htop: replaced read-only symlink with writable htoprc copy"
+    fi
+  '';
 }
