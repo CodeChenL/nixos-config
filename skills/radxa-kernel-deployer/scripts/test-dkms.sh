@@ -15,24 +15,33 @@ mkdir -p "$TEST_ROOT/source/debian" "$TEST_ROOT/image/boot" \
 touch "$TEST_ROOT/source/debian/changelog" \
   "$TEST_ROOT/linux-image-board_1.2-3_arm64.deb" \
   "$TEST_ROOT/linux-headers-board_1.2-3_arm64.deb" \
+  "$TEST_ROOT/linux-image-radxa-board_1.2-3_all.deb" \
+  "$TEST_ROOT/linux-headers-radxa-board_1.2-3_all.deb" \
   "$TEST_ROOT/image/boot/vmlinuz-6.1.99-radxa" \
   "$TEST_ROOT/headers/usr/src/linux-headers-6.1.99-radxa/Makefile" \
   "$TEST_ROOT/headers/usr/src/linux-headers-6.1.99-radxa/arch/arm64/Makefile"
 
 dpkg-parsechangelog() { printf '1.2-3\n'; }
 dpkg-deb() {
-  local kind=image
+  local kind=image file package
   [[ "$2" == *linux-headers* ]] && kind=headers
+  file=${2##*/}
+  package="linux-$kind-board"
+  [[ "$file" == *_all.deb ]] && package=${file%%_*}
   case "$1" in
     -f)
       case "$3" in
-        Package) printf '%s\n' "${PACKAGE_NAME:-linux-$kind-board}" ;;
+        Package) printf '%s\n' "${PACKAGE_NAME:-$package}" ;;
         Version) printf '%s\n' "${PACKAGE_VERSION:-1.2-3}" ;;
         *) return 91 ;;
       esac ;;
     --fsys-tarfile)
       [[ "${BAD_ARCHIVE:-false}" == false ]] || return 2
-      tar -cf - -C "$TEST_ROOT/$kind" . ;;
+      if [[ "$file" == *_all.deb ]]; then
+        tar -cf - --files-from /dev/null
+      else
+        tar -cf - -C "$TEST_ROOT/$kind" .
+      fi ;;
     *) return 92 ;;
   esac
 }
@@ -69,6 +78,11 @@ run_case() {
 
 BEFORE=$OLD AFTER="$OLD"$'\n'"$TARGET" FINAL=$AFTER
 run_case healthy-added-target 0 0
+mapfile -d '' -t selected_debs < "$TEST_ROOT/dpkg-argv"
+[[ "${#selected_debs[@]}" == 2 ]]
+[[ "${selected_debs[0]}" == /home/radxa/linux-image-board_1.2-3_arm64.deb ]]
+[[ "${selected_debs[1]}" == /home/radxa/linux-headers-board_1.2-3_arm64.deb ]]
+grep -Fq '跳过无内核 payload 的 meta package' "$TEST_ROOT/output"
 BEFORE=$OLD AFTER=$OLD FINAL="$OLD"$'\n'"$TARGET"
 run_case unchanged-old-status-repaired 0 1
 AFTER='' FINAL=$TARGET
@@ -154,7 +168,7 @@ FINAL="$TARGET"$'\n''wifi/1.0, 6.2-other, aarch64: installed'
 run_case multiple-targets-repaired 0 2
 grep -Fq 'dkms install -m wifi -v 1.0 -k 6.2-other -a aarch64' "$TEST_ROOT/commands"
 rm "$TEST_ROOT/image/boot/vmlinuz-6.2-other" "$TEST_ROOT/image/boot/vmlinuz-6.1.99-radxa"
-run_case image-without-release-rejected 1 0 '没有可验证的内核 release'
+run_case image-without-release-rejected 1 0 '必须提供 image 和 headers 实包'
 [[ ! -s "$TEST_ROOT/commands" ]]
 mkdir -p "$TEST_ROOT/image/usr/lib/modules/6.1.99-radxa"
 AFTER=$TARGET

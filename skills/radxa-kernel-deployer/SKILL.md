@@ -47,8 +47,11 @@ keywords:
 `dpkg-deb --fsys-tarfile | tar -tf -` 读取 image 内的 `boot/vmlinuz-<release>` 或
 `[usr/]lib/modules/<release>/`，得到实际目标 release。每个 release 必须有 headers 包内的
 `usr/src/linux-headers-<release>/Makefile` 或 `[usr/]lib/modules/<release>/build` 匹配。
-不能识别的实包、元包、缺失 headers、非法 release 或版本不匹配均在传输前失败；不会退回安装
-`linux-libc-dev` 等其他包。Debian 包版本不等于内核 release，不能用版本文件名或远端 `uname -r` 替代。
+归档有效但不含上述 image/headers payload 标记的同版本 `linux-image-*` / `linux-headers-*`
+meta package 会在传输前跳过，不会进入安装清单；过滤后必须同时存在匹配的 image 和 headers
+实包。不能识别的包、损坏归档、缺失 headers、非法 release 或版本不匹配均在传输前失败；
+不会退回安装 `linux-libc-dev` 等其他包。Debian 包版本不等于内核 release，不能用版本文件名
+或远端 `uname -r` 替代。
 
 传输使用支持 `scp -s` 的 OpenSSH 客户端及远端 SFTP 子系统，强制 SFTP，不回退到会经
 远端 shell 展开路径的旧 SCP 协议。安装参数逐项编码，`sudo -S bash -c` 的命令整体再次编码；
@@ -93,7 +96,7 @@ release 集合，并重新验证目标包和 image/headers 路径。等待超时
 | 文件 | 职责 |
 |------|------|
 | `scripts/deploy.sh` | 主入口：版本检测→定位包→传输→安装→DKMS 检查/修复→验证→重启 |
-| `scripts/helpers.sh` | 辅助函数：retry_scp、retry_ssh、sudo_remote、wait_for_device |
+| `scripts/helpers.sh` | 辅助函数：package payload 检查、retry_scp、retry_ssh、sudo_remote、wait_for_device |
 | `scripts/installation.sh` | 精确包清单、安装参数编码、包/image/headers 验证及运行内核查询 |
 
 ## 错误处理
@@ -125,8 +128,8 @@ bash skills/radxa-kernel-deployer/scripts/test-installation.sh
 `dpkg-parsechangelog`，同步执行部署入口；不运行真实 SSH、SCP、sudo、安装或重启。
 `test-transport.sh` 提供共享 mock；对 SSH/sudo 的嵌套命令实际启动隔离 shell 解码，再执行
 mock dpkg/query 和临时目录路径检查。测试核对最终 dpkg argv 和无害注入哨兵没有被创建。
-安装测试包含原有 DKMS 用例，并覆盖路径编码、apt 删除目标、精确包版本/状态、远端路径缺失、
-最终 SSH 失败、重启等待失败、重启后错误内核和包状态变化。
+安装测试包含原有 DKMS 用例，并覆盖同版本 meta package 过滤、路径编码、apt 删除目标、精确包
+版本/状态、远端路径缺失、最终 SSH 失败、重启等待失败、重启后错误内核和包状态变化。
 
 ## 约束
 

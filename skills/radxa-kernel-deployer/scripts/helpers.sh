@@ -68,49 +68,68 @@ valid_dkms_token() {
   }
 }
 
-target_kernel_releases() (
+kernel_deb_payload_info() (
   set -o pipefail
-  local expected_version="$1" deb package version paths path release
-  local images="" headers="" found
+  local expected_version="$1" deb="$2" package version kind paths path release
+  local releases=""
+
+  package=$(dpkg-deb -f "$deb" Package) || return 1
+  version=$(dpkg-deb -f "$deb" Version) || return 1
+  [[ "$version" == "$expected_version" ]] || {
+    echo "[FAIL] 包版本不匹配: $deb ($version)" >&2; return 1;
+  }
+  [[ "$package" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || {
+    echo "[FAIL] 非法包名: $deb ($package)" >&2; return 1;
+  }
+  case "$package" in
+    linux-image-*) kind=image ;;
+    linux-headers-*) kind=headers ;;
+    *) echo "[FAIL] 非内核实包: $deb ($package)" >&2; return 1 ;;
+  esac
+
+  paths=$(dpkg-deb --fsys-tarfile "$deb" | tar -tf -) || return 1
+  while IFS= read -r path; do
+    path=${path#./}
+    release=""
+    case "$kind:$path" in
+      image:boot/vmlinuz-*) release=${path#boot/vmlinuz-} ;;
+      image:lib/modules/*|image:usr/lib/modules/*)
+        release=${path#*lib/modules/}; release=${release%%/*} ;;
+      headers:usr/src/linux-headers-*/Makefile)
+        release=${path#usr/src/linux-headers-}; release=${release%/Makefile}
+        [[ "$release" != */* ]] || continue ;;
+      headers:lib/modules/*/build|headers:usr/lib/modules/*/build)
+        release=${path#*lib/modules/}; release=${release%/build}
+        [[ "$release" != */* ]] || continue ;;
+    esac
+    [[ -n "$release" ]] || continue
+    valid_dkms_token "$release" || return 1
+    releases+="$release"$'\n'
+  done <<< "$paths"
+
+  [[ -n "$releases" ]] || return 3
+  while IFS= read -r release; do
+    [[ -n "$release" ]] && printf '%s\t%s\n' "$kind" "$release"
+  done < <(printf '%s' "$releases" | LC_ALL=C sort -u)
+)
+
+target_kernel_releases() (
+  local expected_version="$1" deb info status kind release
+  local images="" headers=""
   shift
   for deb in "$@"; do
-    package=$(dpkg-deb -f "$deb" Package) || return 1
-    version=$(dpkg-deb -f "$deb" Version) || return 1
-    [[ "$version" == "$expected_version" ]] || {
-      echo "[FAIL] 包版本不匹配: $deb ($version)" >&2; return 1;
+    info=$(kernel_deb_payload_info "$expected_version" "$deb") || {
+      status=$?
+      [[ "$status" -ne 3 ]] || echo "[FAIL] 包中没有可验证的内核 release: $deb" >&2
+      return 1
     }
-    case "$package" in
-      linux-image-*|linux-headers-*) ;;
-      *) echo "[FAIL] 非内核实包: $deb ($package)" >&2; return 1 ;;
-    esac
-    paths=$(dpkg-deb --fsys-tarfile "$deb" | tar -tf -) || return 1
-    found=false
-    while IFS= read -r path; do
-      path=${path#./}
-      release=""
-      case "$package:$path" in
-        linux-image-*:boot/vmlinuz-*) release=${path#boot/vmlinuz-} ;;
-        linux-image-*:lib/modules/*|linux-image-*:usr/lib/modules/*)
-          release=${path#*lib/modules/}; release=${release%%/*} ;;
-        linux-headers-*:usr/src/linux-headers-*/Makefile)
-          release=${path#usr/src/linux-headers-}; release=${release%/Makefile}
-          [[ "$release" != */* ]] || continue ;;
-        linux-headers-*:lib/modules/*/build|linux-headers-*:usr/lib/modules/*/build)
-          release=${path#*lib/modules/}; release=${release%/build}
-          [[ "$release" != */* ]] || continue ;;
-      esac
-      [[ -n "$release" ]] || continue
-      valid_dkms_token "$release" || return 1
-      found=true
-      if [[ "$package" == linux-image-* ]]; then
+    while IFS=$'\t' read -r kind release; do
+      if [[ "$kind" == image ]]; then
         images+="$release"$'\n'
       else
         headers+="$release"$'\n'
       fi
-    done <<< "$paths"
-    [[ "$found" == true ]] || {
-      echo "[FAIL] 包中没有可验证的内核 release: $deb" >&2; return 1;
-    }
+    done <<< "$info"
   done
   [[ -n "$images" && -n "$headers" ]] || {
     echo "[FAIL] 必须提供 image 和 headers 实包" >&2; return 1;

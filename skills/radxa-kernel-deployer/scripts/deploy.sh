@@ -56,10 +56,20 @@ detect_version() {
 # === 步骤 2: 定位 .deb ===
 locate_debs() {
   local version="$1"
-  local deb
+  local deb status
   local -a found=()
   for deb in ../linux-image*"${version}"*.deb ../linux-headers*"${version}"*.deb; do
-    [[ -f "$deb" ]] && found+=("$deb")
+    [[ -f "$deb" ]] || continue
+    if kernel_deb_payload_info "$version" "$deb" >/dev/null; then
+      found+=("$deb")
+    else
+      status=$?
+      if [[ "$status" -eq 3 ]]; then
+        echo "[INFO] 跳过无内核 payload 的 meta package: $deb" >&2
+      else
+        return "$status"
+      fi
+    fi
   done
   [[ ${#found[@]} -gt 0 ]] || { echo "ERROR: 未找到版本 ${version} 的 .deb" >&2; return 1; }
   printf '%s\n' "${found[@]}"
