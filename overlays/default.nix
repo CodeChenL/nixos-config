@@ -16,6 +16,11 @@ let
     then import ./pkgs/konnect { inherit inputs final prev; }
     else null;
 
+  ghidraMcpPackages =
+    if prev.stdenv.hostPlatform.system == "x86_64-linux"
+    then import ./pkgs/ghidra-mcp { inherit inputs final prev; }
+    else null;
+
   konnect-addon =
     if prev.stdenv.hostPlatform.system == "x86_64-linux"
     then prev.kicad.callPackage ./pkgs/konnect-addon { inherit konnect; }
@@ -199,6 +204,9 @@ in
 
   codex-desktop-api-key = import ./pkgs/codex-desktop-api-key { inherit inputs final prev; };
   freedownloadmanager = import ./pkgs/freedownloadmanager { inherit inputs final prev; };
+  ghidra-mcp-bridge = if ghidraMcpPackages != null then ghidraMcpPackages.bridge else null;
+  ghidra-mcp-extension = if ghidraMcpPackages != null then ghidraMcpPackages.extension else null;
+  ghidra-with-mcp = if ghidraMcpPackages != null then ghidraMcpPackages.ghidraWithExtension else null;
   inherit konnect konnect-addon kicad;
   llama-cpp-full = import ./pkgs/llama-cpp-full { inherit inputs final prev; };
   natfrp-service = import ./pkgs/natfrp-service { inherit inputs final prev; };

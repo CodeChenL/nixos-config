@@ -26,6 +26,9 @@ let
       --print-logs \
       --log-level INFO
   '';
+  ghidraMcpEnabled =
+    (osConfig.networking.hostName or null) == "ChenIdeaCentre"
+    && pkgs.stdenv.hostPlatform.system == "x86_64-linux";
 in
 {
   # ocs reuses the opencode serve backend managed by opencode-web.service.
@@ -66,7 +69,7 @@ in
         "oh-my-openagent@beta"
       ];
       autoupdate = false;
-      mcp = lib.optionalAttrs
+      mcp = (lib.optionalAttrs
         (pkgs.konnect != null && (config.home.file.".config/konnect/config.toml".enable or false)) {
         konnect = {
           type = "local";
@@ -77,7 +80,19 @@ in
           ];
           enabled = true;
         };
-      };
+      }) // (lib.optionalAttrs ghidraMcpEnabled {
+        ghidra = {
+          type = "local";
+          command = [
+            "${pkgs.ghidra-mcp-bridge}/bin/bridge-mcp-ghidra"
+            "--transport"
+            "stdio"
+            "--lazy"
+          ];
+          enabled = true;
+          timeout = 300000;
+        };
+      });
       provider = {
         "openai" = {
           options = {

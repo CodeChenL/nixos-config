@@ -81,6 +81,10 @@ let
   # enabled where it is buildable and skip it elsewhere.
   codexDesktopEnabled = lib.elem pkgs.stdenv.hostPlatform.system [ "x86_64-linux" ];
 
+  ghidraMcpEnabled =
+    (osConfig.networking.hostName or null) == "ChenIdeaCentre"
+    && pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+
   # nixpkgs marks qq as aarch64-capable, but this override pins an amd64-only
   # deb download; reflect the real support so ARM hosts filter it out.
   linuxqq = (pkgs.master.qq.overrideAttrs (_: {
@@ -270,5 +274,7 @@ in
     # Bambu Studio and RustDesk are desktop-only host packages.
     bambu-studio
     rustdesk
+  ] ++ lib.optionals ghidraMcpEnabled [
+    pkgs.ghidra-with-mcp
   ]);
 }
