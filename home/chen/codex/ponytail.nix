@@ -40,8 +40,13 @@ let
       if [ -n "$DRY_RUN_CMD" ]; then
         printf '%s\n' "Would trust Ponytail hooks for the installed marketplace revision"
       else
-        MARKETPLACE_PLUGIN_ROOT="$HOME/.codex/.tmp/marketplaces/${ponytailMarketplaceName}"
-        PLUGIN_VERSION="$(${pkgs.jq}/bin/jq -er '.version' "$MARKETPLACE_PLUGIN_ROOT/.codex-plugin/plugin.json")"
+        PLUGIN_VERSION="$(
+          ${pkgs.llm-agents.codex}/bin/codex plugin list --json |
+            ${pkgs.jq}/bin/jq -er --arg pluginId ${lib.escapeShellArg ponytailPluginId} '
+              [.installed[] | select(.pluginId == $pluginId and .installed == true and (.version | type) == "string" and (.version | length) > 0)]
+              | if length == 1 then .[0].version else error("expected exactly one installed plugin: \($pluginId)") end
+            '
+        )"
         PLUGIN_ROOT="$HOME/.codex/plugins/cache/${ponytailMarketplaceName}/${ponytailPluginName}/$PLUGIN_VERSION"
 
         ${pkgs.nodejs}/bin/node "${hookTrustUpdater}" plugin \
