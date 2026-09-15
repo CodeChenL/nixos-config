@@ -285,7 +285,6 @@ in
           chmod 700 "$(dirname "$AUTH")"
           AND=$(tr -d '\n' < "$SECRETS/and.key")
           DSK=$(tr -d '\n' < "$SECRETS/deepseek.key")
-          KMK=$(tr -d '\n' < "$SECRETS/kimi.key")
           MMK=$(tr -d '\n' < "$SECRETS/minimax.key")
           VMK=$(tr -d '\n' < "$SECRETS/vamrs.key")
           VMKA=$(tr -d '\n' < "$SECRETS/vamrs-atp.key")
@@ -296,7 +295,6 @@ in
             cat > "$AUTH_TMP" << EOF
     {
       "deepseek": {"type": "api", "key": "$DSK"},
-      "kimi-for-coding": {"type": "api", "key": "$KMK"},
       "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
       "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
       "openai": {"type": "api", "key": "$AND"}
