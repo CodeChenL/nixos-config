@@ -36,8 +36,10 @@
     };
 
     llm-agents = {
+      # Built against the unstable channel: the latest llm-agents packages
+      # (t3code) need electron_44, which the stable channel does not have yet.
       url = "github:numtide/llm-agents.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
 
     codex-desktop-linux = {
