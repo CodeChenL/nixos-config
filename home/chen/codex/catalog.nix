@@ -39,12 +39,13 @@ let
     "openai/gpt-5.4-mini" = providerOverlay "openai/gpt-5.4-mini" "openai" "gpt-5.4-mini";
     "openai/gpt-5.3-codex-spark" = providerOverlay "openai/gpt-5.3-codex-spark" "openai" "gpt-5.3-codex-spark";
     "openai/gpt-5.2" = providerOverlay "openai/gpt-5.2" "openai" "gpt-5.2";
-    "moonshotai/kimi-k3" = providerOverlay "moonshotai/kimi-k3" "kimi-for-coding" "k3";
-    "moonshotai/kimi-for-coding/k3-256k" = providerOverlay "moonshotai/kimi-k3" "kimi-for-coding" "k3-256k";
-    "moonshotai/kimi-k2.7-code" = providerOverlay "moonshotai/kimi-k2.7-code" "kimi-for-coding" "kimi-for-coding";
-    "moonshotai/kimi-k2.7-code-highspeed" = providerOverlay "moonshotai/kimi-k2.7-code-highspeed" "kimi-for-coding" "kimi-for-coding-highspeed";
+    # models.dev renamed the "kimi-for-coding" provider to "kimi-code-plan-cn"
+    # (same model file names); catalog keys stay unchanged.
+    "moonshotai/kimi-k3" = providerOverlay "moonshotai/kimi-k3" "kimi-code-plan-cn" "k3";
+    "moonshotai/kimi-for-coding/k3-256k" = providerOverlay "moonshotai/kimi-k3" "kimi-code-plan-cn" "k3-256k";
+    "moonshotai/kimi-k2.7-code" = providerOverlay "moonshotai/kimi-k2.7-code" "kimi-code-plan-cn" "kimi-for-coding";
+    "moonshotai/kimi-k2.7-code-highspeed" = providerOverlay "moonshotai/kimi-k2.7-code-highspeed" "kimi-code-plan-cn" "kimi-for-coding-highspeed";
     "deepseek/deepseek-v4-flash" = providerOverlay "deepseek/deepseek-v4-flash" "deepseek" "deepseek-v4-flash";
-    "deepseek/deepseek-v4-flash-vision-exp" = providerOverlay "deepseek/deepseek-v4-flash-vision-exp" "deepseek" "deepseek-v4-flash-vision-exp";
     "deepseek/deepseek-v4-pro" = providerOverlay "deepseek/deepseek-v4-pro" "deepseek" "deepseek-v4-pro";
     "xiaomi/mimo-v2.5-pro" = providerOverlay "xiaomi/mimo-v2.5-pro" "xiaomi-token-plan-cn" "mimo-v2.5-pro";
     "xiaomi/mimo-v2.5" = providerOverlay "xiaomi/mimo-v2.5" "xiaomi-token-plan-cn" "mimo-v2.5";
@@ -173,12 +174,7 @@ let
       { slug = "kimi-for-coding"; modelsDevId = "moonshotai/kimi-k2.7-code"; displayName = "Kimi For Coding"; priority = 102; }
       { slug = "kimi-for-coding-highspeed"; modelsDevId = "moonshotai/kimi-k2.7-code-highspeed"; displayName = "Kimi For Coding HighSpeed"; priority = 103; }
       { slug = "deepseek-v4-flash"; modelsDevId = "deepseek/deepseek-v4-flash"; displayName = "DeepSeek V4 Flash"; priority = 110; }
-      { slug = "deepseek-v4-flash-vision-exp"; modelsDevId = "deepseek/deepseek-v4-flash-vision-exp"; displayName = "DeepSeek V4 Flash Vision"; priority = 111; }
       { slug = "deepseek-v4-pro"; modelsDevId = "deepseek/deepseek-v4-pro"; displayName = "DeepSeek V4 Pro"; priority = 112; }
-    ];
-    deepseek = [
-      { slug = "deepseek-v4-flash"; modelsDevId = "deepseek/deepseek-v4-flash"; displayName = "DeepSeek V4 Flash"; priority = 1; }
-      { slug = "deepseek-v4-pro"; modelsDevId = "deepseek/deepseek-v4-pro"; displayName = "DeepSeek V4 Pro"; priority = 2; }
     ];
     xiaomi = [
       { slug = "mimo-v2.5-pro"; modelsDevId = "xiaomi/mimo-v2.5-pro"; displayName = "MiMo V2.5 Pro"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 1; }
@@ -208,15 +204,20 @@ let
   # DeepSeek's official Codex catalog carries request-shape metadata that
   # a generic models.dev projection cannot infer, including freeform
   # apply_patch, v2 multi-agent mode, and the exact reasoning levels.
+  # Upstream setup script v1.3.0 ships two models: deepseek-flash
+  # (DeepSeek-V4.1-Flash) and deepseek-v4-pro. The catalog JSON lives in a
+  # `CODEX_MODELS_JSON` heredoc inside write_models_json, so extract between
+  # those markers instead of hard-coding line numbers that drift whenever
+  # upstream edits the script preamble.
   deepseekSetupScript = pkgs.fetchurl {
     url = "https://cdn.deepseek.com/api-docs/codex-deepseek-setup-en.sh";
-    hash = "sha256-ktctcCfQ+AAxjYFr8MEsZMFIROx/hhcPL8Y/fnJUkBw=";
+    hash = "sha256-7gEZYQA374/EzwWJkQnewVMK2QBzD9KXl9p1Gv2FlT4=";
   };
   deepseekOfficialCatalog = pkgs.runCommand "codex-deepseek-official-models.json" {
-    nativeBuildInputs = [ pkgs.jq ];
+    nativeBuildInputs = [ pkgs.gawk pkgs.jq ];
   } ''
-    ${pkgs.gnused}/bin/sed -n '100,305p' ${deepseekSetupScript} > "$out"
-    ${pkgs.jq}/bin/jq -e '.models | length == 3' "$out" > /dev/null
+    ${pkgs.gawk}/bin/awk '/<<.*CODEX_MODELS_JSON/ { grab=1; next } grab && /^CODEX_MODELS_JSON$/ { exit } grab { print }' ${deepseekSetupScript} > "$out"
+    ${pkgs.jq}/bin/jq -e '.models | length == 2' "$out" > /dev/null
   '';
   proxyCatalog = pkgs.runCommand "codex-model-catalog-proxy.json" {
     nativeBuildInputs = [ pkgs.jq ];

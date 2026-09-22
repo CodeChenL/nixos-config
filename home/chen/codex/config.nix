@@ -26,7 +26,7 @@ let
   providers = {
     ChenIdeaCentre = {
       name = "ChenIdeaCentre";
-      base_url = "http://chenjaly.cn:8080/v1";
+      base_url = "http://api.chenjaly.cn:8080/v1";
       wire_api = "responses";
       auth = providerAuth "and.key";
       http_headers = { "x-openai-actor-authorization" = "local-image-extension"; };
@@ -38,7 +38,7 @@ let
   toml = pkgs.formats.toml { };
   profiles = {
     "openai-proxy" = { model_provider = "ChenIdeaCentre"; model = "gpt-5.6-sol"; model_reasoning_effort = "max"; model_catalog_json = catalogs.proxy; };
-    deepseek = { model_provider = "deepseek"; model = "deepseek-v4-pro"; model_reasoning_effort = "high"; model_catalog_json = catalogs.deepseek; };
+    deepseek = { model_provider = "deepseek"; model = "deepseek-flash"; model_reasoning_effort = "high"; model_catalog_json = catalogs.deepseek; };
     xiaomi = { model_provider = "xiaomi"; model = "mimo-v2.5-pro"; model_reasoning_effort = "high"; model_catalog_json = catalogs.xiaomi; };
     minimax = { model_provider = "minimax"; model = "MiniMax-M3"; model_reasoning_effort = "high"; model_catalog_json = catalogs.minimax; };
   };
