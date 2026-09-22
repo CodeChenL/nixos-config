@@ -45,6 +45,18 @@
     ];
   };
 
+  # /home/chen/Documents — dedicated Btrfs subvolume on the 2 TB NVMe
+  # The partition GUID is assigned before formatting so this declaration does
+  # not depend on the kernel's nvme device numbering.
+  fileSystems."/home/chen/Documents" = {
+    device = "/dev/disk/by-partuuid/6da6720e-c517-4d3b-83f9-2f6e190b7c4e";
+    fsType = "btrfs";
+    options = [
+      "noatime" "ssd" "discard=async"
+      "space_cache=v2" "subvol=/documents"
+    ];
+  };
+
   # ── 固件与 CPU 微码 ────────────────────────────────────────────
   hardware.enableRedistributableFirmware = true;
   hardware.cpu.intel.updateMicrocode = true;
