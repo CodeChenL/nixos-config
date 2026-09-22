@@ -205,7 +205,7 @@ ensure_target_dkms() {
 }
 
 wait_for_device() {
-  local host="$1" max=5 delay=10
+  local host="$1" max=5 delay=15
   for i in $(seq 1 $max); do
     echo "[wait] 等待上线 ${i}/${max}（${delay}s）" >&2; sleep $delay; delay=$((delay + delay / 2))
     sshpass -e ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "${host}" "echo ok" >/dev/null 2>&1 && \
