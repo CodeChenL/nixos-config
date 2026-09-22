@@ -10,6 +10,7 @@ let
     "directory-only-working-tree-watch"
     "frameless-titlebar"
     "global-dictation"
+    "linux-performance-workarounds"
     "mcp-helper-reaper"
     "node-repl-reaper"
     "open-target-discovery"
@@ -50,7 +51,7 @@ let
 
     # Sub2API OpenAI passthrough must remain disabled for Responses API compatibility.
     "llm-pi-ai".providers.openai = {
-      baseURL = "http://chenjaly.cn:8080/v1";
+      baseURL = "http://api.chenjaly.cn:8080/v1";
       apiKeyEnv = "OPENAI_API_KEY";
     };
 
