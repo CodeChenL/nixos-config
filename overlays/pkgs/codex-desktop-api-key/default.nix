@@ -6,6 +6,7 @@ let
   apiKeyUltraGatesScript = ./api-key-ultra-gates.js;
   bundleSourceMapScript = ./bundle-source-map.js;
   dreamSkinPatchScript = ./dreamskin-patch.js;
+  panelResizePatchScript = ./panel-resize-performance.js;
   dreamSkinSource = final.fetchFromGitHub {
     owner = "Fei-Away";
     repo = "Codex-Dream-Skin";
@@ -80,6 +81,13 @@ in
         install -Dm0644 "$extracted/.codex-linux/api-key-ultra-patch.json" \
           "$app/.codex-linux/api-key-ultra-patch.json"
       '';
+      panelResizePerformanceEnabled = final.lib.elem "linux-performance-workarounds" featureIds;
+      panelResizePerformanceInstall = final.lib.optionalString panelResizePerformanceEnabled ''
+        CODEX_BUNDLE_SOURCE_MAP=${bundleSourceMapScript} \
+          ${final.nodejs}/bin/node ${panelResizePatchScript} "$extracted" || exit 1
+        install -Dm0644 "$extracted/.codex-linux/panel-resize-performance-patch.json" \
+          "$app/.codex-linux/panel-resize-performance-patch.json"
+      '';
       watchboundEnabled = final.lib.elem "directory-only-working-tree-watch" featureIds;
       watchboundDigestUpdate = final.lib.optionalString watchboundEnabled ''
         set -- "$extracted"/node_modules/@gadicc/watchbound-node-linux-*-gnu/package.json
@@ -135,10 +143,12 @@ NODE
           cp -a "$unpacked/." "$extracted/"
         fi
         ${apiKeyUltraInstall}
+        ${panelResizePerformanceInstall}
         ${dreamSkinInstall}
         rm -f "$extracted/.codex-linux/api-key-ui-patch.json" \
           "$extracted/.codex-linux/api-key-ultra-patch.json" \
-          "$extracted/.codex-linux/dreamskin-native-patch.json"
+          "$extracted/.codex-linux/dreamskin-native-patch.json" \
+          "$extracted/.codex-linux/panel-resize-performance-patch.json"
         ${watchboundDigestUpdate}
         (cd "$extracted" && find . -type f -printf '%P\n' | LC_ALL=C sort) > "$ordering"
         ${final.asar}/bin/asar pack "$extracted" "$rebuilt" \
