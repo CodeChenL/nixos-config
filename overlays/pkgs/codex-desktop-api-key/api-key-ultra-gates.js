@@ -45,10 +45,10 @@ function requiredSteps(currentSlider) {
     {
       marker: "codexLinuxApiKeyUltraFeatureGate",
       context: "declarator",
-      pattern: /m=([A-Za-z_$][\w$]*)&&([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),`1186680773`\)/,
+      pattern: /([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)&&([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),`1186680773`\)/,
       replacement: (match) =>
-        "m=(" + match[1] + "||t===`apikey`||a)/*codexLinuxApiKeyUltraFeatureGate*/",
-      postcondition: /m=\([A-Za-z_$][\w$]*\|\|t===`apikey`\|\|a\)/,
+        match[1] + "=(" + match[2] + "||t===`apikey`||a)/*codexLinuxApiKeyUltraFeatureGate*/",
+      postcondition: /([A-Za-z_$])=\([A-Za-z_$][\w$]*\|\|t===`apikey`\|\|a\)/,
     },
     {
       marker: "codexLinuxApiKeyUltraProviderGate",
@@ -100,7 +100,7 @@ function requiredSteps(currentSlider) {
     steps.push({
       marker: "codexLinuxApiKeyUltraSliderSelection",
       context: "call",
-      pattern: /([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*(?:\?\.models)?,\{sliderModelsConfig:[A-Za-z_$][\w$]*,includeUltraInSlider:)[A-Za-z_$][\w$]*\.data\.ultraEffortEnabled===!0(\}\))/,
+      pattern: /([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*(?:\?\.models)?,\{sliderModelsConfig:[A-Za-z_$][\w$]*,includeUltraInSlider:)(?:(?:[A-Za-z_$][\w$]*==null\?)?[A-Za-z_$][\w$]*\.data\.ultraEffortEnabled===!0(?::[A-Za-z_$][\w$]*\.settings\?\.showUltraInModelPickerSlider===!0)?|[A-Za-z_$][\w$]*\.data\.ultraEffortEnabled===!0)(\}\))/,
       replacement: (match) => match[1] + "!0/*codexLinuxApiKeyUltraSliderSelection*/" + match[2],
       postcondition: /[A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*(?:\?\.models)?,\{sliderModelsConfig:[A-Za-z_$][\w$]*,includeUltraInSlider:!0\/\*codexLinuxApiKeyUltraSliderSelection\*\/\}\)/,
       embeddedMarker: true,
