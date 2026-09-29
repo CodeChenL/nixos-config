@@ -16,6 +16,7 @@ let
   omoMarketplaceSource = "https://github.com/code-yeongyu/lazycodex.git";
   omoPluginName = "omo";
   omoPluginId = "${omoPluginName}@${omoMarketplaceName}";
+  hookTrustUpdater = pkgs.writeScript "hook-trust-updater.js" (builtins.readFile ./hook-trust-updater.js);
 
   tomlSection = lib.optionalString enable ''
     [marketplaces.${omoMarketplaceName}]
@@ -106,6 +107,8 @@ let
         export PLUGIN_DATA="$HOME/.codex/plugins/data/${omoPluginName}-${omoMarketplaceName}"
         ${pkgs.nodejs}/bin/node "$PLUGIN_ROOT/components/bootstrap/dist/cli.js" \
           worker --codex-home "$CODEX_HOME" --only setup --once
+        ${pkgs.nodejs}/bin/node "${hookTrustUpdater}" plugin \
+          "$PLUGIN_ROOT" "$HOME/.codex/config.toml" "${omoPluginId}"
       fi
     '';
 
