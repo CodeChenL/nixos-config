@@ -61,7 +61,19 @@ let
     };
   };
 
-  ghidraWithExtension = final.unstable.ghidra.withExtensions (_: [ extension ]);
+  ghidraWithExtension = final.symlinkJoin {
+    name = "ghidra-with-mcp-${final.unstable.ghidra.version}";
+    paths = [ (final.unstable.ghidra.withExtensions (_: [ extension ])) ];
+    nativeBuildInputs = [ final.makeWrapper ];
+    # ghidra-mcp >= v5.4.1 gates /run_script_inline and /run_ghidra_script
+    # behind GHIDRA_MCP_ALLOW_SCRIPTS. The flag is read by the GhidraMCP
+    # extension inside the Ghidra JVM, so it must be set on the Ghidra
+    # launcher itself (the MCP bridge never inspects it).
+    postBuild = ''
+      wrapProgram $out/bin/ghidra --set GHIDRA_MCP_ALLOW_SCRIPTS 1
+      wrapProgram $out/bin/ghidra-analyzeHeadless --set GHIDRA_MCP_ALLOW_SCRIPTS 1
+    '';
+  };
 in
 {
   inherit bridge extension ghidraWithExtension;
