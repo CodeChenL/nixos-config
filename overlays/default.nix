@@ -97,15 +97,12 @@ let
   };
 in
 {
-  unstable = (import inputs.nixpkgs-unstable {
+  # opencode 不再用稳定通道 bun 重编译：nixpkgs PR #564101（rev 6774f7bc 起）
+  # 已带 splitting:false 补丁规避 bun 1.4.x 编译产物启动崩溃（a.name TypeError）。
+  unstable = import inputs.nixpkgs-unstable {
     system = prev.stdenv.hostPlatform.system;
     config = { allowUnfree = true; };
-  }).extend (_unstableFinal: unstablePrev: {
-    # nixpkgs-unstable 自 bun 1.4.2 起编译出的 opencode 单文件产物在运行时会崩
-    # （layer node 依赖解析拿到 undefined → SystemPrompt.environment 抛 TypeError），
-    # 而上游 opencode 1.18.30 固定 bun@1.3.14；改用稳定通道的 bun 1.3.x 重新编译。
-    opencode = unstablePrev.opencode.override { bun = prev.bun; };
-  });
+  };
   master = import inputs.nixpkgs-master {
     system = prev.stdenv.hostPlatform.system;
     config = {
