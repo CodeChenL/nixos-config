@@ -34,6 +34,14 @@ let
     };
     "openai/gpt-5.6-terra" = providerOverlay "openai/gpt-5.6-terra" "openai" "gpt-5.6-terra";
     "openai/gpt-5.6-luna" = providerOverlay "openai/gpt-5.6-luna" "openai" "gpt-5.6-luna";
+    # GPT-6 is a three-member series (Astra/Sol/Luna, mirroring GPT-5.6's
+    # Sol/Terra/Luna tiering).  Fast/Pro are experimental modes of each member
+    # on this endpoint (service_tier=priority / reasoning.mode=pro), not
+    # separate models, so the catalog lists the base members only — the same
+    # treatment as the GPT-5.6 series above.
+    "openai/gpt-6-astra" = providerOverlay "openai/gpt-6-astra" "openai" "gpt-6-astra";
+    "openai/gpt-6-sol" = providerOverlay "openai/gpt-6-sol" "openai" "gpt-6-sol";
+    "openai/gpt-6-luna" = providerOverlay "openai/gpt-6-luna" "openai" "gpt-6-luna";
     "openai/gpt-5.5" = providerOverlay "openai/gpt-5.5" "openai" "gpt-5.5";
     "openai/gpt-5.4" = providerOverlay "openai/gpt-5.4" "openai" "gpt-5.4";
     "openai/gpt-5.4-mini" = providerOverlay "openai/gpt-5.4-mini" "openai" "gpt-5.4-mini";
@@ -47,6 +55,8 @@ let
     "moonshotai/kimi-k2.7-code-highspeed" = providerOverlay "moonshotai/kimi-k2.7-code-highspeed" "kimi-code-plan-cn" "kimi-for-coding-highspeed";
     "deepseek/deepseek-v4-flash" = providerOverlay "deepseek/deepseek-v4-flash" "deepseek" "deepseek-v4-flash";
     "deepseek/deepseek-v4-pro" = providerOverlay "deepseek/deepseek-v4-pro" "deepseek" "deepseek-v4-pro";
+    "xiaomi/mimo-v2.6-pro" = providerOverlay "xiaomi/mimo-v2.6-pro" "xiaomi-token-plan-cn" "mimo-v2.6-pro";
+    "xiaomi/mimo-v2.6-flash" = providerOverlay "xiaomi/mimo-v2.6-flash" "xiaomi-token-plan-cn" "mimo-v2.6-flash";
     "xiaomi/mimo-v2.5-pro" = providerOverlay "xiaomi/mimo-v2.5-pro" "xiaomi-token-plan-cn" "mimo-v2.5-pro";
     "xiaomi/mimo-v2.5" = providerOverlay "xiaomi/mimo-v2.5" "xiaomi-token-plan-cn" "mimo-v2.5";
     # MiniMax models exposed by the ChenIdeaCentre Sub2API route.  The
@@ -146,8 +156,11 @@ let
       { slug = "gpt-5.6"; modelsDevId = "openai/gpt-5.6"; displayName = "GPT-5.6"; supportsSearchTool = true; supportVerbosity = true; priority = 4; }
       { slug = "gpt-5.6-terra"; modelsDevId = "openai/gpt-5.6-terra"; displayName = "GPT-5.6 Terra"; supportsSearchTool = true; supportVerbosity = true; priority = 2; }
       { slug = "gpt-5.6-luna"; modelsDevId = "openai/gpt-5.6-luna"; displayName = "GPT-5.6 Luna"; supportsSearchTool = true; supportVerbosity = true; priority = 3; }
-      { slug = "codex-auto-review"; modelsDevId = "openai/codex-auto-review"; displayName = "Codex Auto Review"; priority = 6; }
-      { slug = "gpt-5.5"; modelsDevId = "openai/gpt-5.5"; displayName = "GPT-5.5"; supportVerbosity = true; priority = 7; }
+      { slug = "gpt-6-astra"; modelsDevId = "openai/gpt-6-astra"; displayName = "GPT-6 Astra"; supportsSearchTool = true; supportVerbosity = true; priority = 5; }
+      { slug = "gpt-6-sol"; modelsDevId = "openai/gpt-6-sol"; displayName = "GPT-6 Sol"; supportsSearchTool = true; supportVerbosity = true; priority = 6; }
+      { slug = "gpt-6-luna"; modelsDevId = "openai/gpt-6-luna"; displayName = "GPT-6 Luna"; supportsSearchTool = true; supportVerbosity = true; priority = 7; }
+      { slug = "codex-auto-review"; modelsDevId = "openai/codex-auto-review"; displayName = "Codex Auto Review"; priority = 8; }
+      { slug = "gpt-5.5"; modelsDevId = "openai/gpt-5.5"; displayName = "GPT-5.5"; supportVerbosity = true; priority = 9; }
       { slug = "gpt-5.4"; modelsDevId = "openai/gpt-5.4"; displayName = "GPT-5.4"; supportVerbosity = true; priority = 16; }
       { slug = "gpt-5.4-mini"; modelsDevId = "openai/gpt-5.4-mini"; displayName = "GPT-5.4 Mini"; priority = 23; }
       { slug = "gpt-5.3-codex-spark"; modelsDevId = "openai/gpt-5.3-codex-spark"; displayName = "GPT-5.3 Codex Spark"; priority = 26; }
@@ -163,6 +176,8 @@ let
       { slug = "MiniMax-M2.7"; modelsDevId = "minimax/MiniMax-M2.7"; displayName = "MiniMax M2.7"; priority = 205; }
       { slug = "MiniMax-M2.7-highspeed"; modelsDevId = "minimax/MiniMax-M2.7-highspeed"; displayName = "MiniMax M2.7 HighSpeed"; priority = 206; }
       { slug = "MiniMax-M3"; modelsDevId = "minimax/MiniMax-M3"; displayName = "MiniMax M3"; supportsParallelToolCalls = true; priority = 207; }
+      { slug = "mimo-v2.6-pro"; modelsDevId = "xiaomi/mimo-v2.6-pro"; displayName = "MiMo V2.6 Pro"; priority = 298; }
+      { slug = "mimo-v2.6-flash"; modelsDevId = "xiaomi/mimo-v2.6-flash"; displayName = "MiMo V2.6 Flash"; priority = 299; }
       { slug = "mimo-v2.5"; modelsDevId = "xiaomi/mimo-v2.5"; displayName = "MiMo V2.5"; priority = 300; }
       { slug = "mimo-v2.5-pro"; modelsDevId = "xiaomi/mimo-v2.5-pro"; displayName = "MiMo V2.5 Pro"; priority = 301; }
       { slug = "mimo-v2.5-asr"; modelsDevId = "xiaomi/mimo-v2.5-asr"; displayName = "MiMo V2.5 ASR"; toolMode = "direct"; priority = 302; }
@@ -177,8 +192,10 @@ let
       { slug = "deepseek-v4-pro"; modelsDevId = "deepseek/deepseek-v4-pro"; displayName = "DeepSeek V4 Pro"; priority = 112; }
     ];
     xiaomi = [
-      { slug = "mimo-v2.5-pro"; modelsDevId = "xiaomi/mimo-v2.5-pro"; displayName = "MiMo V2.5 Pro"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 1; }
-      { slug = "mimo-v2.5"; modelsDevId = "xiaomi/mimo-v2.5"; displayName = "MiMo V2.5"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 2; }
+      { slug = "mimo-v2.6-pro"; modelsDevId = "xiaomi/mimo-v2.6-pro"; displayName = "MiMo V2.6 Pro"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 1; }
+      { slug = "mimo-v2.6-flash"; modelsDevId = "xiaomi/mimo-v2.6-flash"; displayName = "MiMo V2.6 Flash"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 2; }
+      { slug = "mimo-v2.5-pro"; modelsDevId = "xiaomi/mimo-v2.5-pro"; displayName = "MiMo V2.5 Pro"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 3; }
+      { slug = "mimo-v2.5"; modelsDevId = "xiaomi/mimo-v2.5"; displayName = "MiMo V2.5"; baseInstructions = "You are MiMo, an AI assistant developed by Xiaomi."; priority = 4; }
     ];
     minimax = [
       { slug = "MiniMax-M3"; modelsDevId = "minimax/MiniMax-M3"; displayName = "MiniMax M3"; baseInstructions = "You are Codex, a coding agent based on MiniMax-M3."; supportsParallelToolCalls = true; priority = 1; }

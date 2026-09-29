@@ -39,7 +39,7 @@ let
   profiles = {
     "openai-proxy" = { model_provider = "ChenIdeaCentre"; model = "gpt-5.6-sol"; model_reasoning_effort = "max"; model_catalog_json = catalogs.proxy; };
     deepseek = { model_provider = "deepseek"; model = "deepseek-flash"; model_reasoning_effort = "high"; model_catalog_json = catalogs.deepseek; };
-    xiaomi = { model_provider = "xiaomi"; model = "mimo-v2.5-pro"; model_reasoning_effort = "high"; model_catalog_json = catalogs.xiaomi; };
+    xiaomi = { model_provider = "xiaomi"; model = "mimo-v2.6-pro"; model_reasoning_effort = "high"; model_catalog_json = catalogs.xiaomi; };
     minimax = { model_provider = "minimax"; model = "MiniMax-M3"; model_reasoning_effort = "high"; model_catalog_json = catalogs.minimax; };
   };
   profileFiles = lib.mapAttrs' (name: profile: lib.nameValuePair ".codex/${name}.config.toml" {
