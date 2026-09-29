@@ -6,6 +6,7 @@
     ./git.nix
     ./ssh.nix
     ./opencode.nix
+    ./zeron.nix
   ];
 
   home.username = "chen";

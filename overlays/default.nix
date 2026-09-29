@@ -219,4 +219,5 @@ in
   radxa-linkr-debuggerctl = radxaLinkrDebuggerCtl;
   rustty = inputs.rustty.packages.${prev.stdenv.hostPlatform.system}.rustty;
   sub2api = import ./pkgs/sub2api { inherit inputs final prev; };
+  zeron = import ./pkgs/zeron { inherit inputs final prev; };
 }
