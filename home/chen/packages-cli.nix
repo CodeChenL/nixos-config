@@ -1,6 +1,15 @@
 { pkgs, ... }:
 
 {
+  # Antigravity CLI（Google 的 Go TUI agent 客户端，命令名 agy）。
+  # nixpkgs-unstable 已打包（stable 26.05 尚无），走 HM 声明式模块以便
+  # 后续 settings/skills/MCP 全部进 Nix。注意：agy 本体在 /nix/store 只读，
+  # 官方 install.sh 的自升级路径（~/.local/bin）天然失效，无需额外禁用。
+  programs.antigravity-cli = {
+    enable = true;
+    package = pkgs.unstable.antigravity-cli;
+  };
+
   home.packages = with pkgs; [
     # ── AI CLI ──────────────────────────────────────────────────
     radxa-linkr-debuggerctl
