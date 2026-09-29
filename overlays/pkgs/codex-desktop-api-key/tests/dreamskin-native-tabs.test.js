@@ -29,17 +29,30 @@ test("Linux only lets right-panel tabs paint through the frameless header", () =
   ));
 });
 
-test("Linux overrides only the current home-suggestions selector drift", () => {
+test("Linux overrides current main-content and home-suggestions selector drift", () => {
   const source = patchSource();
   const overrides = source.match(/const linuxSelectorOverrides = \{([\s\S]*?)\n  \};/u)?.[1];
   assert.ok(overrides, "linuxSelectorOverrides block missing");
+  assert.match(overrides, /"main-content-top-fade"/u);
   assert.match(overrides, /"home-suggestions"/u);
   assert.doesNotMatch(overrides, /"(?:left-panel|message)"/u);
-  assert.ok(source.includes('linuxSelectorOverrides: ["home-suggestions"]'));
+  assert.doesNotMatch(overrides, /\[data-app-shell-main-content-top-fade\]/u);
+  assert.ok(source.includes(
+    'linuxSelectorOverrides: ["main-content-top-fade", "home-suggestions"]',
+  ));
 });
 
 test("Linux composer mapping follows the upstream visual-surface selector", () => {
   const source = patchSource();
   assert.doesNotMatch(source, /^\s*"composer-chrome":/mu);
   assert.match(source, /selector:\s*linuxSelectorOverrides\[entry\.key\]\s*\?\?\s*entry\.selector/u);
+});
+
+test("DreamSkin disable flag crosses the preload bridge into the sandboxed renderer", () => {
+  const source = patchSource();
+  assert.match(source, /isDreamSkinDisabled:\(\)=>process\.env\.CODEX_DREAMSKIN_DISABLE==="1"/u);
+  const injection = source.match(/const injection = `([\s\S]*?)`;\n/u)?.[1];
+  assert.ok(injection, "DreamSkin injection block missing");
+  assert.ok(injection.includes("globalThis.electronBridge?.isDreamSkinDisabled?.()"));
+  assert.doesNotMatch(injection, /globalThis\.process\?\.env\?\.CODEX_DREAMSKIN_DISABLE/u);
 });

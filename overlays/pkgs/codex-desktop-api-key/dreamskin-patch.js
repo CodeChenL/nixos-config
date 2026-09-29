@@ -40,6 +40,32 @@ function parseArguments(argv) {
   return options;
 }
 
+const DREAM_SKIN_DISABLE_BRIDGE = 'isDreamSkinDisabled:()=>process.env.CODEX_DREAMSKIN_DISABLE==="1",';
+const DREAM_SKIN_DISABLE_RENDERER_CHECK = "globalThis.electronBridge?.isDreamSkinDisabled?.()";
+const DREAM_SKIN_DISABLE_LEGACY_CHECK = 'globalThis.process?.env?.CODEX_DREAMSKIN_DISABLE==="1"';
+
+function patchPreloadBridge() {
+  const preloadPath = path.join(root, ".vite", "build", "preload.js");
+  regularFile(preloadPath, "Electron preload");
+  const source = fs.readFileSync(preloadPath, "utf8");
+  if (source.includes(DREAM_SKIN_DISABLE_BRIDGE)) return;
+  const anchor = "getBuildFlavor:()=>";
+  if (source.split(anchor).length !== 2) fail("expected exactly one Electron preload bridge anchor");
+  const patchedSource = source.replace(anchor, `${DREAM_SKIN_DISABLE_BRIDGE}${anchor}`);
+  try {
+    new Function(patchedSource);
+  } catch (error) {
+    fail(`Electron preload bridge syntax validation failed: ${error.message}`);
+  }
+  const mapped = withSourceMap({
+    assetName: path.basename(preloadPath),
+    originalSource: source,
+    patchedSource,
+  });
+  fs.writeFileSync(preloadPath, mapped.source);
+  fs.writeFileSync(path.join(path.dirname(preloadPath), mapped.mapName), mapped.mapText);
+}
+
 function readJson(filePath, label) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -278,6 +304,7 @@ async function buildPayload(options, assetName) {
     fail("unsupported DreamSkin selector contract");
   }
   const linuxSelectorOverrides = {
+    "main-content-top-fade": ':is(.app-shell-main-content-top-fade, [class*="_MainContentTopFade_"])',
     "home-suggestions": ':is([data-home-ambient-suggestions], .group\\/home-suggestions)',
   };
   const selectors = selectorContract.selectors.map((entry) => ({
@@ -352,7 +379,7 @@ async function buildPayload(options, assetName) {
   const injection = `
 ;(()=>{
   if(globalThis.__codexLinuxDreamSkinInstalled===${JSON.stringify(payloadRevision)})return;
-  if(globalThis.process?.env?.CODEX_DREAMSKIN_DISABLE==="1")return;
+  if(globalThis.electronBridge?.isDreamSkinDisabled?.())return;
   try{
     const result=${payload};
     globalThis.__codexLinuxDreamSkinInstalled=${JSON.stringify(payloadRevision)};
@@ -371,7 +398,7 @@ async function buildPayload(options, assetName) {
       linuxClientVersion: LINUX_DREAMSKIN_CLIENT_VERSION,
       packagePlatforms: manifest.platforms,
       platformCompatibilityOverride: platformMismatch,
-      linuxSelectorOverrides: ["home-suggestions"],
+      linuxSelectorOverrides: ["main-content-top-fade", "home-suggestions"],
       linuxCompatibilityExceptions: ["right-panel-tabs-header-paint-through"],
       payloadRevision,
       styleRevision,
@@ -395,8 +422,22 @@ async function main() {
 
   const assetName = entryAssets[0];
   const assetPath = path.join(assetsDir, assetName);
-  const source = fs.readFileSync(assetPath, "utf8");
+  let source = fs.readFileSync(assetPath, "utf8");
   if (source.includes("__codexLinuxDreamSkinInstalled")) {
+    if (source.includes(DREAM_SKIN_DISABLE_LEGACY_CHECK)) {
+      const upgradedSource = source.replace(
+        DREAM_SKIN_DISABLE_LEGACY_CHECK,
+        DREAM_SKIN_DISABLE_RENDERER_CHECK,
+      );
+      const mapped = withSourceMap({ assetName, originalSource: source, patchedSource: upgradedSource });
+      fs.writeFileSync(assetPath, mapped.source);
+      fs.writeFileSync(path.join(assetsDir, mapped.mapName), mapped.mapText);
+      source = upgradedSource;
+    }
+    if (!source.includes(DREAM_SKIN_DISABLE_RENDERER_CHECK)) {
+      fail("existing DreamSkin patch has an unknown disable contract");
+    }
+    patchPreloadBridge();
     console.log("DreamSkin Linux patch is already present");
     return;
   }
@@ -417,6 +458,7 @@ async function main() {
   }
 
   const result = await buildPayload(options, assetName);
+  patchPreloadBridge();
   const sourceMapMarker = source.lastIndexOf("\n//# sourceMappingURL=");
   const patchedSource = sourceMapMarker >= 0
     ? `${source.slice(0, sourceMapMarker)}\n${result.injection}${source.slice(sourceMapMarker)}`
