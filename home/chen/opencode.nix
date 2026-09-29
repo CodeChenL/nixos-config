@@ -63,10 +63,9 @@ in
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      model = "openai/gpt-5.6-sol";
       plugin = [
         "opencode-mem@latest"
-        "oh-my-openagent@latest"
+        "oh-my-openagent@beta"
       ];
       autoupdate = false;
       mcp = (lib.optionalAttrs
@@ -105,144 +104,249 @@ in
     };
   };
 
-  # Unified beta configuration. Mark completed migrations so the plugin never
-  # attempts to move Home Manager's immutable Nix store sources.
+  # Unified beta configuration. 本文件位于 Nix store，插件的 config-migration 无法
+  # 重写它，启动时只会记录一条 warning（属预期行为，无需处理）。
   home.file.".omo/omo.jsonc" = {
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json";
       "[opencode]" = {
-      agents = {
-        oracle = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
+        # 错误期自动切换模型（runtime-fallback hook，默认关闭）：中止当前请求并把最后一条
+        # prompt 重派到链中下一个模型，带冷却/次数/超时控制。与 model_fallback 互斥，只开其一。
+        runtime_fallback = {
+          enabled = true;
+          # 代理（sub2api）配额/模型不可用常返回 4xx，纳入触发码即时切换（官方 Proxy APIs 建议）。
+          retry_on_errors = [ 400 401 403 404 429 500 502 503 504 ];
+          # 4 档链需要 4 次尝试才能走完（默认 3 不够）。
+          max_fallback_attempts = 4;
+          cooldown_seconds = 15;
+          # 保持 30s（不采用调优建议的 10s）：链上是 xhigh/max 高思考档，
+          # 10s 会把长思考的正常首发延迟误判为挂起并过早切档。
+          timeout_seconds = 30;
+          notify_on_fallback = true;
+          # 冷却结束后回到首选模型（默认 false 会停在 fallback 档）。
+          restore_primary_after_cooldown = true;
         };
-        librarian = {
-          models = [
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-          ];
+        agents = {
+          oracle = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          librarian = {
+            models = [
+              { model = "deepseek/deepseek-flash"; variant = "max"; }
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          explore = {
+            models = [
+              { model = "deepseek/deepseek-flash"; variant = "max"; }
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          multimodal-looker = {
+            models = [
+              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          metis = {
+            models = [
+              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          momus = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          # 主会话（sisyphus）自身的错误回退链；只加链、不动主模型。
+          # runtime-fallback 没有内建兜底链，不声明时主会话遇错不会自动切换。
+          # 主会话通常运行在 mimo-v2.6-pro，同 provider 档位后置，减少切回原厂牌的无效尝试。
+          sisyphus = {
+            fallback_models = [
+              "openai/gpt-6-astra(xhigh)"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          sisyphus-junior = {
+            # FIXME(OMO beta.43): Junior's factory ignores normalized reasoning and
+            # registers medium. Keep xhigh intent until upstream fixes the factory.
+            models = [
+              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
         };
-        explore = {
-          models = [
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-          ];
-        };
-        multimodal-looker = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
-          ];
-        };
-        metis = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
-        };
-        momus = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
-        };
-        sisyphus-junior = {
-          # FIXME(OMO beta.43): Junior's factory ignores normalized reasoning and
-          # registers medium. Keep xhigh intent until upstream fixes the factory.
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
+        categories = {
+          visual-engineering = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+            # runtime-fallback 只读 fallback_models（不读 models 尾部），需显式重复备用档；
+            # 备用档用字符串 (suffix) 形式，对象条目会被加载管线改写成 reasoning、错误期丢档。
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          # beta.84 起 deep 仅为 deep-low 的 legacy 别名；两个类别显式声明，deep-high 不再吃内建链。
+          deep-low = {
+            models = [
+              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          deep-high = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          # ultrabrain：硬逻辑/架构决策档。此前移除后 spawn 会落到 junior 的 model
+          # 覆盖（sol）且不注册错误期链（overrideModel 为真时返回 undefined），故显式恢复。
+          ultrabrain = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          artistry = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "deepseek/deepseek-flash(max)"
+            ];
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "deepseek/deepseek-flash(max)"
+            ];
+          };
+          quick = {
+            models = [
+              { model = "deepseek/deepseek-flash"; variant = "max"; }
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+            fallback_models = [
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+          };
+          unspecified-low = {
+            models = [
+              { model = "deepseek/deepseek-flash"; variant = "max"; }
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+            fallback_models = [
+              "openai/gpt-6-luna-fast(xhigh)"
+              "kimi-code-plan-cn/k3(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+          };
+          unspecified-high = {
+            models = [
+              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+            fallback_models = [
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
+          writing = {
+            models = [
+              { model = "deepseek/deepseek-flash"; variant = "max"; }
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "kimi-code-plan-cn/k3(max)"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+            fallback_models = [
+              "minimax-cn-coding-plan/MiniMax-M3"
+              "kimi-code-plan-cn/k3(max)"
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+            ];
+          };
         };
       };
-      categories = {
-        visual-engineering = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
-          ];
-        };
-        ultrabrain = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
-        };
-        deep = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
-        };
-        artistry = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5"; reasoning = "high"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-          ];
-        };
-        quick = {
-          models = [
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-          ];
-        };
-        unspecified-low = {
-          models = [
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "openai/gpt-5.6-luna-fast"; reasoning = "xhigh"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-          ];
-        };
-        unspecified-high = {
-          models = [
-            { model = "openai/gpt-5.6-sol"; reasoning = "xhigh"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-          ];
-        };
-        writing = {
-          models = [
-            { model = "minimax-cn-coding-plan/MiniMax-M3"; }
-            { model = "deepseek/deepseek-flash"; reasoning = "max"; }
-            { model = "xiaomi-token-plan-cn/mimo-v2.5-pro"; reasoning = "high"; }
-          ];
-        };
-      };
-      };
-      _migrations = [
-        "2026-07-codex-config-jsonc"
-        "2026-07-opencode-config-unification"
-        "2026-08-reasoning-unification"
-      ];
     };
   };
 
@@ -285,6 +389,7 @@ in
           chmod 700 "$(dirname "$AUTH")"
           AND=$(tr -d '\n' < "$SECRETS/and.key")
           DSK=$(tr -d '\n' < "$SECRETS/deepseek.key")
+          KMK=$(tr -d '\n' < "$SECRETS/kimi.key")
           MMK=$(tr -d '\n' < "$SECRETS/minimax.key")
           VMK=$(tr -d '\n' < "$SECRETS/vamrs.key")
           VMKA=$(tr -d '\n' < "$SECRETS/vamrs-atp.key")
@@ -295,6 +400,7 @@ in
             cat > "$AUTH_TMP" << EOF
     {
       "deepseek": {"type": "api", "key": "$DSK"},
+      "kimi-code-plan-cn": {"type": "api", "key": "$KMK"},
       "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
       "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
       "openai": {"type": "api", "key": "$AND"}
