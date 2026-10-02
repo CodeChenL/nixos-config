@@ -179,5 +179,9 @@
       packages.aarch64-linux = {
         chen-xiaomi-elish-bundle = chenXiaomiElish.config.system.build.elishBundle;
       };
+
+      checks.x86_64-linux.mixed-proxy = import ./tests/mixed-proxy-vm.nix {
+        pkgs = self.nixosConfigurations.Aliyun.pkgs;
+      };
     };
 }

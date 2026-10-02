@@ -117,7 +117,7 @@
 
   # ── Sub2API（AI API 网关）────────────────────────────────────────
   services.sub2api = {
-    enable = true;
+    enable = false;
     externalDatabase = true;
     environment = {
       DATABASE_HOST = "47.254.74.103";

@@ -216,5 +216,9 @@ in
   radxa-linkr-debuggerctl = radxaLinkrDebuggerCtl;
   rustty = inputs.rustty.packages.${prev.stdenv.hostPlatform.system}.rustty;
   sub2api = import ./pkgs/sub2api { inherit inputs final prev; };
+  kiro-rs = import ./pkgs/kiro-rs { inherit inputs final prev; };
+  mixed-proxy-rs = import ./pkgs/mixed-proxy-rs { inherit inputs final prev; };
+  opencode-mem = import ./pkgs/opencode-mem { inherit inputs final prev; };
+  oh-my-openagent = import ./pkgs/oh-my-openagent { inherit inputs final prev; };
   zeron = import ./pkgs/zeron { inherit inputs final prev; };
 }
