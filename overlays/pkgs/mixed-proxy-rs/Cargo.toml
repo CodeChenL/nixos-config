@@ -1,0 +1,59 @@
+[package]
+name = "mixed-proxy"
+version = "0.1.0"
+edition = "2024"
+autotests = false
+rust-version = "1.85"
+description = "Single-port TLS HTTP and SOCKS5 proxy with native PAM authentication"
+license = "MIT"
+repository = "https://github.com/ChenIdeaCentre/nixos-config"
+keywords = ["proxy", "socks5", "tls"]
+categories = ["network-programming"]
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+bytes = "1.11"
+fast-socks5 = "=1.0.0"
+http-body-util = "=0.1.5"
+hyper = { version = "=1.11.1", features = ["client", "server", "http1"] }
+hyper-util = { version = "=0.1.21", features = ["tokio"] }
+pam-client2 = { version = "=0.5.5", default-features = false }
+rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "=2.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "sync", "time"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "json", "std"] }
+webpki-roots = "1.0"
+
+[dev-dependencies]
+tempfile = "3.26"
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+tokio = { version = "=1.53.1", features = ["test-util", "process"] }
+
+[[test]]
+name = "cli"
+path = "tests/cli.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+non_ascii_idents = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
