@@ -1,0 +1,68 @@
+--- a/package/dist/index.js
++++ b/package/dist/index.js
+@@ -94,6 +94,36 @@
+     }
+     return undefined;
+ }
++/**
++ * 读取会话当前模型（服务端 session.model，由最近一条真实 user 消息写入，压缩不改它）。
++ * 注入消息必须显式带上它：服务端按 input.model ?? agent.model ?? session.model 取模型，
++ * 自带模型的 agent（如 OMO 的 Sisyphus）会让缺省 model 的注入消息把会话切到 agent 默认模型。
++ */
++export async function resolveSessionModel(client, sessionID) {
++    const sessionClient = client?.session;
++    if (typeof sessionClient?.get !== "function")
++        return undefined;
++    try {
++        const response = await sessionClient.get({ path: { id: sessionID } });
++        if (response?.error)
++            return undefined;
++        const session = unwrapSdkData(response);
++        const model = session?.model;
++        if (typeof model?.providerID !== "string" || !model.providerID.trim() ||
++            typeof model?.id !== "string" || !model.id.trim())
++            return undefined;
++        return {
++            model: { providerID: model.providerID, modelID: model.id },
++            variant: typeof model.variant === "string" && model.variant
++                ? model.variant
++                : undefined,
++        };
++    }
++    catch (error) {
++        log("resolveSessionModel: session.get failed", { sessionID, error: String(error) });
++        return undefined;
++    }
++}
+ async function isInternalCaptureSession(client, sessionID) {
+     // Fast path: sessions we created ourselves (survives brief post-delete window).
+     if (isTrackedInternalCaptureSession(sessionID)) {
+@@ -781,12 +811,19 @@
+                     }
+                     const memoryContext = formatMemoriesForCompaction(memoriesResult.results);
+                     const agent = await resolveSessionAgent(ctx.client, sessionID);
++                    const current = await resolveSessionModel(ctx.client, sessionID);
+                     if (!agent) {
+                         log("Compaction: skipped memory injection because session agent could not be resolved", {
+                             sessionID,
+                         });
+                         return;
+                     }
++                    if (!current) {
++                        log("Compaction: skipped memory injection because session model could not be resolved", {
++                            sessionID,
++                        });
++                        return;
++                    }
+                     await ctx.client.session.prompt({
+                         path: { id: sessionID },
+                         body: {
+@@ -800,6 +837,8 @@
+                             ],
+                             noReply: true,
+                             agent,
++                            model: current.model,
++                            ...(current.variant ? { variant: current.variant } : {}),
+                         },
+                     });
+                     if (ctx.client?.tui) {
