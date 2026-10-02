@@ -36,23 +36,25 @@ let
     secret=$(${pkgs.coreutils}/bin/tr -d '\r\n' < ${tsigSecretFile})
     umask 077
 
+    knot_tmp=$(${pkgs.coreutils}/bin/mktemp ${stateDir}/.knot-key.XXXXXX)
     printf '%s\n' \
       'key:' \
       '  - id: ${tsigName}' \
       '    algorithm: hmac-sha256' \
-      "    secret: $secret" > ${knotKeyFile}.tmp
-    ${pkgs.coreutils}/bin/chown knot:knot ${knotKeyFile}.tmp
-    ${pkgs.coreutils}/bin/chmod 0600 ${knotKeyFile}.tmp
-    ${pkgs.coreutils}/bin/mv ${knotKeyFile}.tmp ${knotKeyFile}
+      "    secret: $secret" > "$knot_tmp"
+    ${pkgs.coreutils}/bin/chown knot:knot "$knot_tmp"
+    ${pkgs.coreutils}/bin/chmod 0600 "$knot_tmp"
+    ${pkgs.coreutils}/bin/mv "$knot_tmp" ${knotKeyFile}
 
+    env_tmp=$(${pkgs.coreutils}/bin/mktemp ${stateDir}/.acme-env.XXXXXX)
     printf '%s\n' \
       'DNSUPDATE_NAMESERVER=127.0.0.1:53' \
       'DNSUPDATE_TSIG_KEY=${tsigName}' \
       "DNSUPDATE_TSIG_SECRET=$secret" \
-      'DNSUPDATE_TSIG_ALGORITHM=hmac-sha256' > ${acmeEnvironmentFile}.tmp
-    ${pkgs.coreutils}/bin/chown root:root ${acmeEnvironmentFile}.tmp
-    ${pkgs.coreutils}/bin/chmod 0600 ${acmeEnvironmentFile}.tmp
-    ${pkgs.coreutils}/bin/mv ${acmeEnvironmentFile}.tmp ${acmeEnvironmentFile}
+      'DNSUPDATE_TSIG_ALGORITHM=hmac-sha256' > "$env_tmp"
+    ${pkgs.coreutils}/bin/chown root:root "$env_tmp"
+    ${pkgs.coreutils}/bin/chmod 0600 "$env_tmp"
+    ${pkgs.coreutils}/bin/mv "$env_tmp" ${acmeEnvironmentFile}
   '';
 
   proxyStreamSettings = ''
@@ -86,6 +88,8 @@ in
     keyFiles = [ knotKeyFile ];
     settings = {
       server.listen = [ "0.0.0.0@53" ];
+      server.identity = "unknown";
+      server.version = "unknown";
 
       acl.${tsigName} = {
         address = "127.0.0.1";
@@ -114,7 +118,7 @@ in
       domain = acmeDomain;
       extraDomainNames = [ "*.${acmeDomain}" ];
       dnsProvider = "rfc2136";
-      dnsPropagationCheck = false;
+      dnsPropagationCheck = true;
       environmentFile = acmeEnvironmentFile;
       group = "nginx";
       reloadServices = [ "nginx" ];

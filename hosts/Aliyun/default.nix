@@ -56,9 +56,9 @@ in
       exit 1
     }
     umask 077
-    printf '%s\n' "$key" > "$destination.tmp"
-    mv "$destination.tmp" "$destination"
-    chmod 600 "$destination"
+    tmp=$(mktemp /run/secrets/.wireguard-chen.XXXXXX)
+    printf '%s\n' "$key" > "$tmp"
+    mv "$tmp" "$destination"
   '';
 
   # Sub2API 已启用；Aliyun 是共享 PostgreSQL/Redis 后端。

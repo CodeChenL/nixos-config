@@ -58,7 +58,7 @@ let
     # credentials.json 仅作首次种子：运行期 token 刷新会回写此文件，/admin 在线
     # 管理同样改它；覆盖会毁掉已刷新凭据。更新请直接改运行时文件，或删除后重启。
     if [ ! -s ${stateDir}/credentials.json ]; then
-      if [ -s "$CRED_DIR/credentials-seed" ] && [ "$(cat "$CRED_DIR/credentials-seed")" != "_" ]; then
+      if [ -s "$CRED_DIR/credentials-seed" ] && [ "$(cat "$CRED_DIR/credentials-seed")" != "__NO_SEED__" ]; then
         tmp=$(mktemp ${stateDir}/.credentials.XXXXXX)
         trap 'rm -f "$tmp"' EXIT
         cp "$CRED_DIR/credentials-seed" "$tmp"
@@ -72,7 +72,7 @@ let
 
     # 客户端 apiKey 同样仅首次种子（保护运行时状态）
     if [ ! -s ${stateDir}/api-key ]; then
-      if [ -s "$CRED_DIR/api-key-seed" ] && [ "$(cat "$CRED_DIR/api-key-seed")" != "_" ]; then
+      if [ -s "$CRED_DIR/api-key-seed" ] && [ "$(cat "$CRED_DIR/api-key-seed")" != "__NO_SEED__" ]; then
         tmp=$(mktemp ${stateDir}/.api-key.XXXXXX)
         trap 'rm -f "$tmp"' EXIT
         cp "$CRED_DIR/api-key-seed" "$tmp"
@@ -88,7 +88,7 @@ let
     # 管理密钥复用 sub2api 的 admin-password（kiro.rs 管理面是单密钥认证、
     # 无用户名概念，常量时间比较 x-api-key/Bearer）。每次 setup 运行时重新读取；
     # setup 是 RemainAfterExit oneshot，轮换后须 `systemctl restart kiro-rs-setup kiro-rs`。
-    if [ ! -s "$CRED_DIR/admin-password" ] || [ "$(cat "$CRED_DIR/admin-password")" = "_" ]; then
+    if [ ! -s "$CRED_DIR/admin-password" ] || [ "$(cat "$CRED_DIR/admin-password")" = "__NO_SEED__" ]; then
       echo "sub2api admin password source is missing or empty" >&2
       exit 1
     fi
@@ -195,9 +195,9 @@ in
           "admin-password:${adminPasswordSourceFile}"
         ];
         SetCredential = [
-          "credentials-seed:_"
-          "api-key-seed:_"
-          "admin-password:_"
+          "credentials-seed:__NO_SEED__"
+          "api-key-seed:__NO_SEED__"
+          "admin-password:__NO_SEED__"
         ];
         ExecStartPre = [
           "+${ownershipRepair}"
