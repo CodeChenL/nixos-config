@@ -33,10 +33,11 @@ let
 
     const prependProxy = [
       { name: "SOCKS5-Proxy", type: "socks5", server: "192.168.2.4", port: 7891, udp: true },
-      { name: "Aliyun-SOCKS5", type: "socks5", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true }
+      { name: "Aliyun-SOCKS5", type: "socks5", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true },
+      { name: "Aliyun-HTTPS", type: "https", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__ }
     ];
 
-    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5"];
+    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-HTTPS"];
 
     function main(config) {
       const existingRules = Array.isArray(config.rules) ? config.rules : [];
@@ -129,13 +130,13 @@ let
         readPassword(source);
       } else if (command === 'generate' && process.argv.length === 6) {
         const password = readPassword(source);
-        failureMessage = 'Clash proxy: public script template must contain exactly one password placeholder.';
+        failureMessage = 'Clash proxy: public script template must contain at least one password placeholder.';
         const script = fs.readFileSync(template, 'utf8');
         const placeholder = '__CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__';
-        if (script.split(placeholder).length !== 2) {
+        if (script.split(placeholder).length < 2) {
           throw new Error();
         }
-        writeScript(target, script.replace(placeholder, () => JSON.stringify(password)));
+        writeScript(target, script.replaceAll(placeholder, () => JSON.stringify(password)));
       } else {
         throw new Error();
       }

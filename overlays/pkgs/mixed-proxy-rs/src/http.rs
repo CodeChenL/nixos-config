@@ -15,9 +15,8 @@ use hyper::{
 };
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{convert::Infallible, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::{io::copy_bidirectional, sync::mpsc, task::JoinSet, time::timeout};
-use tokio_rustls::server::TlsStream;
 
 type Body = BoxBody<Bytes, hyper::Error>;
 type Task = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
@@ -29,8 +28,10 @@ struct Session {
     tasks: mpsc::Sender<Task>,
 }
 
-pub async fn serve(stream: TlsStream<TcpStream>, state: Arc<State>) -> anyhow::Result<()> {
-    let peer = stream.get_ref().0.peer_addr()?;
+pub async fn serve<S>(stream: S, peer: SocketAddr, state: Arc<State>) -> anyhow::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
     let (sender, mut receiver) = mpsc::channel::<Task>(16);
     let session = Session {
         state,

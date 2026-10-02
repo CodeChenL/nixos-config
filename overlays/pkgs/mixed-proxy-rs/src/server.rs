@@ -52,8 +52,13 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> anyhow::Result<()> 
     match byte {
         [5] => socks::serve(stream, state).await,
         [22] => {
+            let peer = stream.peer_addr()?;
             let tls = timeout(SETUP_TIMEOUT, state.tls.acceptor.accept(stream)).await??;
-            http::serve(tls, state).await
+            http::serve(tls, peer, state).await
+        }
+        [_] if byte[0].is_ascii_uppercase() => {
+            let peer = stream.peer_addr()?;
+            http::serve(stream, peer, state).await
         }
         [_] => Ok(()),
     }
