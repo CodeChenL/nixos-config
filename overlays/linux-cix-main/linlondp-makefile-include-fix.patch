@@ -1,0 +1,12 @@
+diff --git a/drivers/gpu/drm/cix/linlon-dp/Makefile b/drivers/gpu/drm/cix/linlon-dp/Makefile
+index 111111111111..222222222222 100644
+--- a/drivers/gpu/drm/cix/linlon-dp/Makefile
++++ b/drivers/gpu/drm/cix/linlon-dp/Makefile
+@@ -4,6 +4,6 @@
+ ccflags-y := \
+-    -I $(srctree)/$(src)/include \
+-    -I $(srctree)/$(src)
++    -I$(srctree)/drivers/gpu/drm/cix/linlon-dp/include \
++    -I$(srctree)/drivers/gpu/drm/cix/linlon-dp
+ 
+ linlon-dp-y := \
