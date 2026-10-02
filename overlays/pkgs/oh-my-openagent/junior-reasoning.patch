@@ -1,0 +1,13 @@
+diff --git a/package/dist/index.js b/package/dist/index.js
+--- a/package/dist/index.js
++++ b/package/dist/index.js
+@@ -163099,7 +163099,8 @@
+     base.variant = override.variant;
+   }
+   if (isGptModel(model)) {
+-    return { ...base, reasoningEffort: override?.reasoningEffort ?? "medium" };
++    const reasoning = override?.reasoning ?? override?.reasoningEffort ?? "medium";
++    return { ...base, reasoningEffort: reasoning === "off" ? "none" : reasoning };
+   }
+   if (isGlmModel(model)) {
+     return base;
