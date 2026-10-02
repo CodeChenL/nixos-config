@@ -87,10 +87,12 @@ in
       narinfo-cache-negative-ttl = 300;
       fallback = false;
     };
+    # 保留期从 30d 收紧为 7d：57G 小盘 + 频繁 git pull 产生大量新 flake 输入，
+    # 30 天窗口内积累的产物会在凌晨 GC 后被下一次构建重新填满
     gc = {
       automatic = true;
       dates = "daily";
-      options = "--delete-older-than 30d";
+      options = "--delete-older-than 7d";
     };
   };
   # 最多保留 60 个系统 profile；本 nixpkgs 版本中该选项位于 boot.loader.*.maxGenerations
@@ -129,6 +131,9 @@ in
   # swapon 不带优先级 → 内核自动分配负优先级，低于 zram，天然形成后备层。
   # 注意：swapfile 位于 /var/lib/swapspace（btrfs 下自动 NOCOW），该目录所在子卷不得做快照。
   services.swapspace.enable = true;
+
+  # ── Journal 日志上限：默认无上限，日志堆积会占满磁盘（此前实测 2.1G）──
+  services.journald.extraConfig = "SystemMaxUse=500M";
 
   # ── 系统状态版本 ────────────────────────────────────────────────
   system.stateVersion = "25.11";
