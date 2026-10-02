@@ -1,4 +1,4 @@
-use crate::transport::{self, SETUP_TIMEOUT};
+use crate::transport;
 use bytes::Bytes;
 use fast_socks5::{new_udp_header, parse_udp_request};
 use std::{
@@ -36,7 +36,7 @@ impl ClientEndpoint {
     }
 
     pub(crate) fn accepts(&self, source: SocketAddr) -> bool {
-        source.ip() == self.peer_ip && self.pinned.is_none_or(|endpoint| endpoint == source)
+        source.ip() == self.peer_ip
     }
 }
 
@@ -73,6 +73,7 @@ async fn packets(
             }
         };
         if !endpoint.accepts(source) {
+            tracing::debug!(%source, "UDP packet rejected: source IP mismatch");
             continue;
         }
         let Ok((0, target, payload)) = parse_udp_request(&buffer[..length]).await else {
@@ -97,7 +98,10 @@ async fn packets(
                     endpoint.pinned = Some(source);
                     continue;
                 }
-                Err(mpsc::error::TrySendError::Full(_)) => continue,
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    tracing::debug!(%address, "UDP target channel full, dropping packet");
+                    continue;
+                }
                 Err(mpsc::error::TrySendError::Closed(returned)) => packet = returned,
             }
             targets.remove(&address);
@@ -112,13 +116,7 @@ async fn packets(
         let Ok(socket) = UdpSocket::bind(SocketAddr::new(bind_ip, 0)).await else {
             continue;
         };
-        if !matches!(
-            timeout(SETUP_TIMEOUT, socket.connect(address)).await,
-            Ok(Ok(()))
-        ) {
-            continue;
-        }
-        let (sender, receiver) = mpsc::channel(16);
+        let (sender, receiver) = mpsc::channel(256);
         let Ok(()) = sender.try_send(packet) else {
             continue;
         };
@@ -135,25 +133,30 @@ async fn upstream(
     destination: (Arc<UdpSocket>, SocketAddr, SocketAddr),
 ) -> anyhow::Result<()> {
     let (relay, client, origin) = destination;
-    let header = new_udp_header(origin)?;
     let mut buffer = vec![0; 65535];
     loop {
         let activity = timeout(TARGET_IDLE, async {
-            let open = tokio::select! {
-                packet = packets.recv() => {
-                    match packet { Some(packet) => { socket.send(&packet).await?; true }, None => false }
+            tokio::select! {
+                Some(packet) = packets.recv() => {
+                    socket.send_to(&packet, origin).await?;
+                    Ok::<_, anyhow::Error>(true)
                 }
-                received = socket.recv(&mut buffer) => {
-                    let length = received?;
+                result = socket.recv_from(&mut buffer) => {
+                    let (length, from) = result?;
+                    if from.ip() != origin.ip() {
+                        return Ok(true);
+                    }
+                    let header = new_udp_header(from)?;
                     let mut reply = Vec::with_capacity(header.len() + length);
                     reply.extend_from_slice(&header);
                     reply.extend_from_slice(&buffer[..length]);
                     relay.send_to(&reply, client).await?;
-                    true
+                    Ok(true)
                 }
-            };
-            Ok::<_, anyhow::Error>(open)
-        }).await;
+                else => Ok(false),
+            }
+        })
+        .await;
         match activity {
             Ok(Ok(true)) => (),
             Ok(Ok(false)) | Err(_) => return Ok(()),
