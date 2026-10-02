@@ -9,6 +9,9 @@ in
     inputs.disko.nixosModules.disko
     ./disko.nix
     ./hardware-configuration.nix
+    ./kiro-rs.nix
+    ./https.nix
+    ./mixed-proxy.nix
     ../ChenIdeaCentre/sub2api.nix
   ];
 
@@ -60,6 +63,10 @@ in
 
   # Sub2API 已启用；Aliyun 是共享 PostgreSQL/Redis 后端。
   services.sub2api.enable = true;
+
+  # kiro-rs：Kiro 订阅 → Anthropic API 反代（模型目录已补齐 kiro.dev 最新版）。
+  # 凭据准备见 ./kiro-rs.nix 头注释（secrets/kiro-rs/credentials.json）。
+  services.kiro-rs.enable = true;
 
   services.postgresql = {
     enableTCPIP = true;
