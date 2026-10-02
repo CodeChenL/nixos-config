@@ -57,10 +57,11 @@ impl Authenticator {
         if credentials.username != USER {
             return false;
         }
-        let Ok(permit) = Arc::clone(&self.permits).try_acquire_owned() else {
+        let deadline = Instant::now() + DEADLINE;
+        let permit = timeout_at(deadline, Arc::clone(&self.permits).acquire_owned()).await;
+        let Ok(Ok(permit)) = permit else {
             return false;
         };
-        let deadline = Instant::now() + DEADLINE;
         let backend = Arc::clone(&self.backend);
         let worker = tokio::task::spawn_blocking(move || {
             let _permit: OwnedSemaphorePermit = permit;

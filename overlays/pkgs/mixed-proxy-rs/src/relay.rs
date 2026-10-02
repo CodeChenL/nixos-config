@@ -21,7 +21,7 @@ const TARGET_IDLE: Duration = Duration::from_secs(60);
 
 pub struct ClientEndpoint {
     peer_ip: IpAddr,
-    pinned: Option<SocketAddr>,
+    pinned: Option<IpAddr>,
 }
 
 impl ClientEndpoint {
@@ -31,12 +31,17 @@ impl ClientEndpoint {
         }
         Ok(Self {
             peer_ip: peer.ip(),
-            pinned: (requested.port() != 0).then(|| SocketAddr::new(peer.ip(), requested.port())),
+            pinned: None,
         })
     }
 
     pub(crate) fn accepts(&self, source: SocketAddr) -> bool {
-        source.ip() == self.peer_ip
+        self.pinned.is_none_or(|pinned| source.ip() == pinned)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pin(&mut self, source: IpAddr) {
+        self.pinned = Some(source);
     }
 }
 
@@ -95,7 +100,7 @@ async fn packets(
         if let Some(sender) = targets.get(&address) {
             match sender.try_send(packet) {
                 Ok(()) => {
-                    endpoint.pinned = Some(source);
+                    endpoint.pinned = Some(source.ip());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Full(_)) => {
@@ -123,7 +128,7 @@ async fn packets(
         let frontend = Arc::clone(relay);
         tasks.spawn(upstream(socket, receiver, (frontend, source, address)));
         targets.insert(address, sender);
-        endpoint.pinned = Some(source);
+        endpoint.pinned = Some(source.ip());
     }
 }
 

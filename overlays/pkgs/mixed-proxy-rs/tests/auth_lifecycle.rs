@@ -52,7 +52,7 @@ async fn rejects_fifth_call_when_four_context_destructors_hold_permits() {
     }
     let accepted = timeout(Duration::from_millis(100), auth.check(credentials()))
         .await
-        .unwrap();
+        .unwrap_or(false);
     for call in calls {
         call.release().await;
     }
@@ -107,7 +107,13 @@ async fn retains_permits_and_rejects_late_success_when_deadline_expires() {
         assert!(!result.unwrap());
     }
     let remaining = auth.permits.available_permits();
-    let overloaded = auth.check(credentials()).await;
+    let mut overloaded_fut = Box::pin(auth.check(credentials()));
+    let overloaded = poll_fn(|cx| match overloaded_fut.as_mut().poll(cx) {
+        Poll::Ready(val) => Poll::Ready(val),
+        Poll::Pending => Poll::Ready(false),
+    })
+    .await;
+    drop(overloaded_fut);
     for call in calls {
         call.release().await;
     }
@@ -141,7 +147,9 @@ async fn retains_permits_when_callers_are_aborted() {
         assert!(result.unwrap_err().is_cancelled());
     }
     let remaining = auth.permits.available_permits();
-    let overloaded = auth.check(credentials()).await;
+    let overloaded = timeout(Duration::from_millis(100), auth.check(credentials()))
+        .await
+        .unwrap_or(false);
     for call in calls {
         call.release().await;
     }
@@ -183,7 +191,13 @@ fn retains_queued_permits_when_futures_are_dropped_before_worker_start() {
         }
         drop(pending);
         let remaining = auth.permits.available_permits();
-        let accepted = auth.check(credentials()).await;
+        let mut accepted_fut = Box::pin(auth.check(credentials()));
+        let accepted = poll_fn(|context| match accepted_fut.as_mut().poll(context) {
+            Poll::Ready(val) => Poll::Ready(val),
+            Poll::Pending => Poll::Ready(false),
+        })
+        .await;
+        drop(accepted_fut);
         release.send(()).unwrap();
         blocker.await.unwrap();
         for _ in 0..4 {

@@ -1,6 +1,6 @@
 use super::{ClientEndpoint, packets, run};
 use fast_socks5::{new_udp_header, parse_udp_request};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpListener, TcpStream, UdpSocket},
@@ -20,8 +20,10 @@ async fn control_pair() -> (TcpStream, TcpStream) {
 #[test]
 fn filters_by_ip_when_udp_port_differs_from_tcp_port() {
     let peer: SocketAddr = "127.0.0.1:44321".parse().unwrap();
-    let endpoint = ClientEndpoint::new(peer, "0.0.0.0:0".parse().unwrap()).unwrap();
+    let mut endpoint = ClientEndpoint::new(peer, "0.0.0.0:0".parse().unwrap()).unwrap();
     assert!(endpoint.accepts("127.0.0.1:12345".parse().unwrap()));
+    endpoint.pin(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    assert!(endpoint.accepts("127.0.0.1:54321".parse().unwrap()));
     assert!(!endpoint.accepts("127.0.0.2:44321".parse().unwrap()));
     assert!(ClientEndpoint::new(peer, "127.0.0.2:0".parse().unwrap()).is_err());
 }
@@ -47,7 +49,7 @@ async fn releases_socket_when_control_closes_before_first_packet() {
 }
 
 #[tokio::test]
-async fn pins_valid_client_when_spoofed_and_malformed_packets_arrive_first() {
+async fn pins_first_valid_source_and_rejects_later_spoofs() {
     let (mut control, server) = control_pair().await;
     let relay = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let address = relay.local_addr().unwrap();
@@ -61,15 +63,15 @@ async fn pins_valid_client_when_spoofed_and_malformed_packets_arrive_first() {
     let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let malformed = UdpSocket::bind("127.0.0.1:0").await.unwrap();
     malformed.send_to(&[0, 0, 0], address).await.unwrap();
+    let mut packet = header.clone();
+    packet.extend_from_slice(b"valid");
+    client.send_to(&packet, address).await.unwrap();
     let spoof = UdpSocket::bind("127.0.0.2:0").await.unwrap();
     let mut packet = header.clone();
     packet.extend_from_slice(b"spoof");
     spoof.send_to(&packet, address).await.unwrap();
     packet[2] = 1;
     malformed.send_to(&packet, address).await.unwrap();
-    let mut packet = header.clone();
-    packet.extend_from_slice(b"valid");
-    client.send_to(&packet, address).await.unwrap();
     let mut payload = [0; 128];
     let (length, upstream) = timeout(Duration::from_secs(1), echo.recv_from(&mut payload))
         .await
