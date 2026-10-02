@@ -7,7 +7,7 @@ use crate::{
 use fast_socks5::util::target_addr::read_address;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional},
+    io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     time::timeout,
 };
@@ -44,7 +44,7 @@ pub async fn serve(mut stream: TcpStream, state: Arc<State>) -> anyhow::Result<(
         1 => match transport::dial(&target).await {
             Ok(mut target) => {
                 reply(&mut stream, 0, target.local_addr()?).await?;
-                copy_bidirectional(&mut stream, &mut target).await?;
+                transport::copy_bidirectional(&mut stream, &mut target).await?;
             }
             Err(_) => reply(&mut stream, 1, local).await?,
         },

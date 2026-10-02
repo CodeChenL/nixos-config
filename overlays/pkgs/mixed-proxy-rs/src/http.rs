@@ -16,7 +16,7 @@ use hyper::{
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{convert::Infallible, future::Future, net::SocketAddr, pin::Pin, sync::Arc};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::{io::copy_bidirectional, sync::mpsc, task::JoinSet, time::timeout};
+use tokio::{sync::mpsc, task::JoinSet, time::timeout};
 
 type Body = BoxBody<Bytes, hyper::Error>;
 type Task = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>;
@@ -124,7 +124,7 @@ async fn proxy(
             .tasks
             .send(Box::pin(async move {
                 let upgraded = timeout(SETUP_TIMEOUT, upgrade).await??;
-                copy_bidirectional(&mut TokioIo::new(upgraded), &mut outbound).await?;
+                transport::copy_bidirectional(&mut TokioIo::new(upgraded), &mut outbound).await?;
                 Ok(())
             }))
             .await

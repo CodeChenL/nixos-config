@@ -119,7 +119,9 @@ async fn packets(
             continue;
         }
         let (sender, receiver) = mpsc::channel(16);
-        sender.try_send(packet)?;
+        let Ok(()) = sender.try_send(packet) else {
+            continue;
+        };
         let frontend = Arc::clone(relay);
         tasks.spawn(upstream(socket, receiver, (frontend, source, address)));
         targets.insert(address, sender);

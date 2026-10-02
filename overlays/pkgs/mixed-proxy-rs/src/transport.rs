@@ -4,13 +4,14 @@ use fast_socks5::util::target_addr::TargetAddr;
 use rustls::{ClientConfig, RootCertStore, ServerConfig, pki_types::ServerName};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpStream, lookup_host},
     time::timeout,
 };
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 pub const SETUP_TIMEOUT: Duration = Duration::from_secs(10);
+const COPY_BUF_SIZE: usize = 65536;
 
 pub struct TlsState {
     pub(crate) acceptor: TlsAcceptor,
@@ -64,11 +65,44 @@ pub async fn dial(target: &TargetAddr) -> anyhow::Result<TcpStream> {
             TargetAddr::Domain(host, port) => TcpStream::connect((host.as_str(), *port)).await,
         }
     };
-    Ok(timeout(SETUP_TIMEOUT, connect).await??)
+    let socket = timeout(SETUP_TIMEOUT, connect).await??;
+    socket.set_nodelay(true)?;
+    Ok(socket)
 }
 
 pub trait Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Stream for T {}
+
+pub async fn copy_bidirectional<A, B>(a: &mut A, b: &mut B) -> std::io::Result<(u64, u64)>
+where
+    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
+    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
+{
+    let (mut ar, mut aw) = tokio::io::split(a);
+    let (mut br, mut bw) = tokio::io::split(b);
+    let mut ab_buf = vec![0u8; COPY_BUF_SIZE];
+    let mut ba_buf = vec![0u8; COPY_BUF_SIZE];
+    let a_to_b = copy_one_way(&mut ar, &mut bw, &mut ab_buf);
+    let b_to_a = copy_one_way(&mut br, &mut aw, &mut ba_buf);
+    tokio::try_join!(a_to_b, b_to_a)
+}
+
+async fn copy_one_way<R, W>(reader: &mut R, writer: &mut W, buf: &mut [u8]) -> std::io::Result<u64>
+where
+    R: AsyncRead + Unpin + ?Sized,
+    W: AsyncWrite + Unpin + ?Sized,
+{
+    let mut total = 0u64;
+    loop {
+        let n = reader.read(buf).await?;
+        if n == 0 {
+            writer.shutdown().await?;
+            return Ok(total);
+        }
+        writer.write_all(&buf[..n]).await?;
+        total += n as u64;
+    }
+}
 
 pub async fn forward(
     target: &TargetAddr,

@@ -45,6 +45,7 @@ pub async fn run(
 }
 
 async fn connection(stream: TcpStream, state: Arc<State>) -> anyhow::Result<()> {
+    stream.set_nodelay(true)?;
     let mut byte = [0];
     if timeout(SETUP_TIMEOUT, stream.peek(&mut byte)).await?? == 0 {
         return Ok(());
