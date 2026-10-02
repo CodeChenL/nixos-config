@@ -172,6 +172,9 @@ in
 
     systemd.services.natfrp = {
       description = "SakuraFrp Launcher";
+      # Use a single restart in the new configuration. The default stop/start
+      # switch path can leave this unit inactive after natfrp-prepare changes.
+      stopIfChanged = false;
       after = [
         "network-online.target"
         "natfrp-prepare.service"
