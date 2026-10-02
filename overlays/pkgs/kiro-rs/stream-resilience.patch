@@ -1,0 +1,1848 @@
+diff --git a/src/anthropic/handlers.rs b/src/anthropic/handlers.rs
+--- a/src/anthropic/handlers.rs
++++ b/src/anthropic/handlers.rs
+@@ -42,6 +42,27 @@
+     parts.join(": ")
+ }
+ 
++/// 重试请求换一个新的 agentContinuationId（与每次正常请求一样随机生成，不与失败的那次共用）
++fn refresh_continuation_id(body: &str) -> String {
++    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(body) else {
++        return body.to_string();
++    };
++    if let Some(state) = value.get_mut("conversationState").and_then(|s| s.as_object_mut()) {
++        if state.contains_key("agentContinuationId") {
++            state.insert("agentContinuationId".to_string(), serde_json::Value::String(Uuid::new_v4().to_string()));
++        }
++    }
++    serde_json::to_string(&value).unwrap_or_else(|_| body.to_string())
++}
++
++/// 解析上游帧，保留事件类型与解析错误供响应处理层终止请求。
++fn decode_event(frame: crate::kiro::parser::frame::Frame) -> Result<Event, Error> {
++    let event_type = frame.event_type().unwrap_or("unknown").to_string();
++    Event::from_frame(frame).map_err(|error| {
++        Error::new(error).context(format!("invalid upstream {event_type} payload"))
++    })
++}
++
+ /// 将 KiroProvider 错误映射为 HTTP 响应
+ fn map_provider_error(err: Error) -> Response {
+     let err_str = err.to_string();
+@@ -537,7 +558,7 @@
+     let initial_events = ctx.generate_initial_events();
+ 
+     // 创建 SSE 流
+-    let stream = create_sse_stream(response, ctx, initial_events);
++    let stream = create_sse_stream(response, ctx, initial_events, Some((provider, request_body.to_string())));
+ 
+     // 返回 SSE 响应
+     Response::builder()
+@@ -562,6 +583,7 @@
+     response: reqwest::Response,
+     ctx: StreamContext,
+     initial_events: Vec<SseEvent>,
++    retry: Option<(std::sync::Arc<crate::kiro::provider::KiroProvider>, String)>,
+ ) -> impl Stream<Item = Result<Bytes, Infallible>> {
+     // 先发送初始事件
+     let initial_stream = stream::iter(
+@@ -574,8 +596,8 @@
+     let body_stream = response.bytes_stream();
+ 
+     let processing_stream = stream::unfold(
+-        (body_stream, ctx, EventStreamDecoder::new(), false, interval(Duration::from_secs(PING_INTERVAL_SECS))),
+-        |(mut body_stream, mut ctx, mut decoder, finished, mut ping_interval)| async move {
++        (body_stream, ctx, EventStreamDecoder::new(), false, interval(Duration::from_secs(PING_INTERVAL_SECS)), retry),
++        |(mut body_stream, mut ctx, mut decoder, finished, mut ping_interval, mut retry)| async move {
+             if finished {
+                 return None;
+             }
+@@ -588,20 +610,38 @@
+                         Some(Ok(chunk)) => {
+                             // 解码事件
+                             if let Err(e) = decoder.feed(&chunk) {
+-                                tracing::warn!("缓冲区溢出: {}", e);
++                                tracing::error!(error = %e, "上游事件流缓冲失败");
++                                ctx.mark_stream_error("api_error", format!("upstream event stream buffer error: {e}"));
++                                let bytes: Vec<Result<Bytes, Infallible>> = ctx.generate_final_events()
++                                    .into_iter()
++                                    .map(|event| Ok(Bytes::from(event.to_sse_string())))
++                                    .collect();
++                                return Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval, retry)));
+                             }
+ 
+                             let mut events = Vec::new();
++                            let mut finished = false;
+                             for result in decoder.decode_iter() {
+                                 match result {
+                                     Ok(frame) => {
+-                                        if let Ok(event) = Event::from_frame(frame) {
+-                                            let sse_events = ctx.process_kiro_event(&event);
+-                                            events.extend(sse_events);
++                                        match decode_event(frame) {
++                                            Ok(event) => events.extend(ctx.process_kiro_event(&event)),
++                                            Err(error) => {
++                                                let cause = error_chain(error.as_ref());
++                                                tracing::error!(error = %cause, "上游事件解析失败");
++                                                ctx.mark_stream_error("api_error", cause);
++                                                events.extend(ctx.generate_final_events());
++                                                finished = true;
++                                                break;
++                                            }
+                                         }
+                                     }
+                                     Err(e) => {
+-                                        tracing::warn!("解码事件失败: {}", e);
++                                        tracing::error!(error = %e, "上游事件流解码失败");
++                                        ctx.mark_stream_error("api_error", format!("invalid upstream event stream: {e}"));
++                                        events.extend(ctx.generate_final_events());
++                                        finished = true;
++                                        break;
+                                     }
+                                 }
+                             }
+@@ -612,7 +652,7 @@
+                                 .map(|e| Ok(Bytes::from(e.to_sse_string())))
+                                 .collect();
+ 
+-                            Some((stream::iter(bytes), (body_stream, ctx, decoder, false, ping_interval)))
++                            Some((stream::iter(bytes), (body_stream, ctx, decoder, finished, ping_interval, retry)))
+                         }
+                         Some(Err(e)) => {
+                             let cause = error_chain(&e);
+@@ -623,16 +663,41 @@
+                                 .into_iter()
+                                 .map(|e| Ok(Bytes::from(e.to_sse_string())))
+                                 .collect();
+-                            Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval)))
++                            Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval, retry)))
+                         }
+                         None => {
++                            if let Err(error) = decoder.finish() {
++                                tracing::error!(error = %error, "上游事件流不完整");
++                                ctx.mark_stream_error("api_error", format!("incomplete upstream event stream: {error}"));
++                            }
++                            // Kiro 偶发：上游在 reasoning 之后直接收尾（无正文、无工具调用、无错误），
++                            // 客户端会以 length 结束回合。透明重试一次，重试输出续接到同一条消息。
++                            if ctx.is_reasoning_only_termination() {
++                                ctx.log_reasoning_only_termination(retry.is_some());
++                                if let Some((provider, body)) = retry.take() {
++                                    match provider.call_api_stream(&refresh_continuation_id(&body)).await {
++                                        Ok(resp) => {
++                                            let bytes: Vec<Result<Bytes, Infallible>> = ctx
++                                                .prepare_upstream_retry()
++                                                .into_iter()
++                                                .map(|e| Ok(Bytes::from(e.to_sse_string())))
++                                                .collect();
++                                            return Some((
++                                                stream::iter(bytes),
++                                                (resp.bytes_stream(), ctx, EventStreamDecoder::new(), false, ping_interval, None),
++                                            ));
++                                        }
++                                        Err(e) => tracing::warn!("reasoning-only 重试请求失败: {}", e),
++                                    }
++                                }
++                            }
+                             // 流结束，发送最终事件
+                             let final_events = ctx.generate_final_events();
+                             let bytes: Vec<Result<Bytes, Infallible>> = final_events
+                                 .into_iter()
+                                 .map(|e| Ok(Bytes::from(e.to_sse_string())))
+                                 .collect();
+-                            Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval)))
++                            Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval, retry)))
+                         }
+                     }
+                 }
+@@ -640,7 +705,7 @@
+                 _ = ping_interval.tick() => {
+                     tracing::trace!("发送 ping 保活事件");
+                     let bytes: Vec<Result<Bytes, Infallible>> = vec![Ok(create_ping_sse())];
+-                    Some((stream::iter(bytes), (body_stream, ctx, decoder, false, ping_interval)))
++                    Some((stream::iter(bytes), (body_stream, ctx, decoder, false, ping_interval, retry)))
+                 }
+             }
+         },
+@@ -687,7 +752,11 @@
+     // 解析事件流
+     let mut decoder = EventStreamDecoder::new();
+     if let Err(e) = decoder.feed(&body_bytes) {
+-        tracing::warn!("缓冲区溢出: {}", e);
++        tracing::error!(error = %e, "上游事件流缓冲失败");
++        return (
++            StatusCode::BAD_GATEWAY,
++            Json(ErrorResponse::new("api_error", format!("upstream event stream buffer error: {e}"))),
++        ).into_response();
+     }
+ 
+     let mut text_content = String::new();
+@@ -710,8 +779,8 @@
+     for result in decoder.decode_iter() {
+         match result {
+             Ok(frame) => {
+-                if let Ok(event) = Event::from_frame(frame) {
+-                    match event {
++                match decode_event(frame) {
++                    Ok(event) => match event {
+                         Event::AssistantResponse(resp) => {
+                             text_content.push_str(&resp.content);
+                         }
+@@ -807,15 +876,25 @@
+                             }
+                         }
+                         _ => {}
++                    },
++                    Err(error) => {
++                        upstream_error.get_or_insert_with(|| ("api_error", error_chain(error.as_ref())));
++                        break;
+                     }
+                 }
+             }
+             Err(e) => {
+-                tracing::warn!("解码事件失败: {}", e);
++                upstream_error.get_or_insert_with(|| ("api_error", format!("invalid upstream event stream: {e}")));
++                break;
+             }
+         }
+     }
+ 
++    if upstream_error.is_none() {
++        if let Err(error) = decoder.finish() {
++            upstream_error = Some(("api_error", format!("incomplete upstream event stream: {error}")));
++        }
++    }
+     if let Some((error_type, message)) = upstream_error {
+         tracing::warn!("上游返回错误事件: {}", message);
+         let status = if error_type == "rate_limit_error" {
+@@ -1243,22 +1322,48 @@
+                             Some(Ok(chunk)) => {
+                                 // 解码事件
+                                 if let Err(e) = decoder.feed(&chunk) {
+-                                    tracing::warn!("缓冲区溢出: {}", e);
++                                    tracing::error!(error = %e, "上游事件流缓冲失败");
++                                    ctx.mark_stream_error("api_error", format!("upstream event stream buffer error: {e}"));
++                                    let bytes: Vec<Result<Bytes, Infallible>> = ctx.finish_and_get_all_events()
++                                        .into_iter()
++                                        .map(|event| Ok(Bytes::from(event.to_sse_string())))
++                                        .collect();
++                                    return Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval)));
+                                 }
+ 
++                                let mut finished = false;
+                                 for result in decoder.decode_iter() {
+                                     match result {
+                                         Ok(frame) => {
+-                                            if let Ok(event) = Event::from_frame(frame) {
+-                                                // 缓冲事件（复用 StreamContext 的处理逻辑）
+-                                                ctx.process_and_buffer(&event);
++                                            match decode_event(frame) {
++                                                Ok(event) => {
++                                                    // 缓冲事件（复用 StreamContext 的处理逻辑）
++                                                    ctx.process_and_buffer(&event);
++                                                }
++                                                Err(error) => {
++                                                    let cause = error_chain(error.as_ref());
++                                                    tracing::error!(error = %cause, "上游事件解析失败");
++                                                    ctx.mark_stream_error("api_error", cause);
++                                                    finished = true;
++                                                    break;
++                                                }
+                                             }
+                                         }
+                                         Err(e) => {
+-                                            tracing::warn!("解码事件失败: {}", e);
++                                            tracing::error!(error = %e, "上游事件流解码失败");
++                                            ctx.mark_stream_error("api_error", format!("invalid upstream event stream: {e}"));
++                                            finished = true;
++                                            break;
+                                         }
+                                     }
+                                 }
++                                if finished {
++                                    let bytes: Vec<Result<Bytes, Infallible>> = ctx.finish_and_get_all_events()
++                                        .into_iter()
++                                        .map(|event| Ok(Bytes::from(event.to_sse_string())))
++                                        .collect();
++                                    return Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval)));
++                                }
+                                 // 继续读取下一个 chunk，不发送任何数据
+                             }
+                             Some(Err(e)) => {
+@@ -1273,6 +1378,10 @@
+                                 return Some((stream::iter(bytes), (body_stream, ctx, decoder, true, ping_interval)));
+                             }
+                             None => {
++                                if let Err(error) = decoder.finish() {
++                                    tracing::error!(error = %error, "上游事件流不完整");
++                                    ctx.mark_stream_error("api_error", format!("incomplete upstream event stream: {error}"));
++                                }
+                                 // 流结束，完成处理并返回所有事件（已更正 input_tokens）
+                                 let all_events = ctx.finish_and_get_all_events();
+                                 let bytes: Vec<Result<Bytes, Infallible>> = all_events
+@@ -1346,3 +1455,38 @@
+         assert_eq!(sonnet45.thinking.unwrap().thinking_type, "enabled");
+     }
+ }
++
++#[cfg(test)]
++#[path = "malformed_event_fixture.rs"]
++mod malformed_event_fixture;
++
++#[cfg(test)]
++#[path = "frame_error_tests.rs"]
++mod frame_error_tests;
++
++#[cfg(test)]
++#[path = "eof_event_tests.rs"]
++mod eof_event_tests;
++
++#[cfg(test)]
++#[path = "first_error_tests.rs"]
++mod first_error_tests;
++
++#[cfg(test)]
++#[path = "malformed_event_tests.rs"]
++mod malformed_event_tests;
++
++#[cfg(test)]
++mod retry_tests {
++    use super::*;
++
++    #[test]
++    fn refresh_continuation_id_replaces_only_that_field() {
++        let body = r#"{"conversationState":{"agentContinuationId":"old","conversationId":"c1"},"profileArn":"p"}"#;
++        let out: serde_json::Value = serde_json::from_str(&refresh_continuation_id(body)).unwrap();
++        assert_ne!(out["conversationState"]["agentContinuationId"], "old");
++        assert_eq!(out["conversationState"]["conversationId"], "c1");
++        assert_eq!(out["profileArn"], "p");
++        assert_eq!(refresh_continuation_id("not json"), "not json");
++    }
++}
+diff --git a/src/anthropic/stream.rs b/src/anthropic/stream.rs
+--- a/src/anthropic/stream.rs
++++ b/src/anthropic/stream.rs
+@@ -553,6 +553,11 @@
+     pub provider_usage: Option<crate::kiro::model::events::TokenUsage>,
+     /// metadataEvent 给出的真实 stopReason（已规范化）
+     pub upstream_stop_reason: Option<String>,
++    /// 本条消息是否出现过 reasoningContentEvent（跨重试保留）
++    pub reasoning_seen: bool,
++    /// 诊断计数：reasoning 字符数、未识别的上游事件数
++    pub reasoning_chars: usize,
++    pub unknown_events: usize,
+ }
+ 
+ impl StreamContext {
+@@ -585,6 +590,9 @@
+             upstream_error: None,
+             provider_usage: None,
+             upstream_stop_reason: None,
++            reasoning_seen: false,
++            reasoning_chars: 0,
++            unknown_events: 0,
+         }
+     }
+ 
+@@ -623,6 +631,41 @@
+         }
+     }
+ 
++    /// 上游在 reasoning 之后直接收尾：没有正文、没有工具调用、没有错误事件，也不是上下文溢出。
++    /// 仅针对 reasoningContentEvent 路径（旧式 `<thinking>` 标签路径不参与）。
++    pub fn is_reasoning_only_termination(&self) -> bool {
++        self.reasoning_seen
++            && self.upstream_error.is_none()
++            && !self.state_manager.has_tool_use
++            && !self.state_manager.has_non_thinking_blocks()
++            && self.thinking_buffer.trim().is_empty()
++            && self.state_manager.stop_reason.as_deref() != Some("model_context_window_exceeded")
++    }
++
++    /// 为透明重试收尾本次尝试：关闭 reasoning 块（下发 signature），清掉本次尝试的
++    /// stopReason 与 usage 快照；重试输出作为新的内容块续接到同一条消息。
++    pub fn prepare_upstream_retry(&mut self) -> Vec<SseEvent> {
++        let events = self.close_reasoning_if_open();
++        if !self.in_thinking_block && self.thinking_buffer.trim().is_empty() {
++            self.thinking_buffer.clear();
++        }
++        self.state_manager.stop_reason = None;
++        self.upstream_stop_reason = None;
++        self.provider_usage = None;
++        events
++    }
++
++    pub fn log_reasoning_only_termination(&self, will_retry: bool) {
++        tracing::warn!(
++            reasoning_chars = self.reasoning_chars,
++            unknown_events = self.unknown_events,
++            local_stop_reason = ?self.state_manager.stop_reason,
++            upstream_stop_reason = ?self.upstream_stop_reason,
++            will_retry,
++            "上游在 reasoning 之后直接收尾：无正文、无工具调用、无错误事件"
++        );
++    }
++
+     pub fn mark_stream_error(&mut self, error_type: &str, message: impl Into<String>) {
+         if self.upstream_error.is_none() {
+             self.upstream_error = Some((error_type.to_string(), message.into()));
+@@ -758,6 +801,10 @@
+                 tracing::warn!("收到异常事件: {} - {}", exception_type, message);
+                 Vec::new()
+             }
++            Event::Unknown {} => {
++                self.unknown_events += 1;
++                Vec::new()
++            }
+             _ => Vec::new(),
+         }
+     }
+@@ -775,6 +822,8 @@
+         reasoning: &crate::kiro::model::events::ReasoningContentEvent,
+     ) -> Vec<SseEvent> {
+         let mut events = Vec::new();
++        self.reasoning_seen = true;
++        self.reasoning_chars += reasoning.text.chars().count();
+ 
+         // 首次进入 reasoning：分配块索引、emit content_block_start
+         if !self.reasoning_block_open {
+@@ -1317,7 +1366,7 @@
+         // 并补发一套完整的 text 事件（内容为一个空格），确保 content 数组中有 text 块
+         let resolved_upstream = self.apply_upstream_stop_reason();
+         if self.thinking_enabled
+-            && (had_thinking_block || self.thinking_block_index.is_some())
++            && (had_thinking_block || self.thinking_block_index.is_some() || self.reasoning_seen)
+             && !self.state_manager.has_non_thinking_blocks()
+         {
+             if !resolved_upstream && self.state_manager.stop_reason.is_none() {
+@@ -1578,6 +1627,109 @@
+         assert_eq!(normalize_stop_reason("weird"), None);
+     }
+ 
++    fn reasoning_event(text: &str, sig: &str) -> crate::kiro::model::events::ReasoningContentEvent {
++        crate::kiro::model::events::ReasoningContentEvent {
++            text: text.to_string(),
++            signature: Some(sig.to_string()),
++            redacted_content: None,
++        }
++    }
++
++    #[test]
++    fn test_reasoning_only_termination_detection() {
++        let mut only = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = only.generate_initial_events();
++        let _ = only.process_reasoning_content(&reasoning_event("plan", "sig"));
++        assert!(only.is_reasoning_only_termination());
++
++        let mut with_text = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = with_text.generate_initial_events();
++        let _ = with_text.process_reasoning_content(&reasoning_event("plan", "sig"));
++        let _ = with_text.process_assistant_response("answer");
++        assert!(!with_text.is_reasoning_only_termination());
++
++        let mut with_tool = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = with_tool.process_reasoning_content(&reasoning_event("plan", "sig"));
++        with_tool.state_manager.set_has_tool_use(true);
++        assert!(!with_tool.is_reasoning_only_termination());
++
++        let mut with_error = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = with_error.process_reasoning_content(&reasoning_event("plan", "sig"));
++        with_error.mark_stream_error("api_error", "boom");
++        assert!(!with_error.is_reasoning_only_termination());
++
++        let mut overflow = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = overflow.process_reasoning_content(&reasoning_event("plan", "sig"));
++        overflow.state_manager.set_stop_reason("model_context_window_exceeded");
++        assert!(!overflow.is_reasoning_only_termination());
++
++        let fresh = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        assert!(!fresh.is_reasoning_only_termination());
++    }
++
++    #[test]
++    fn test_retry_output_continues_same_message() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let mut all = ctx.generate_initial_events();
++        all.extend(ctx.process_reasoning_content(&reasoning_event("first attempt", "sig-1")));
++        ctx.state_manager.set_stop_reason("max_tokens");
++        all.extend(ctx.prepare_upstream_retry());
++        all.extend(ctx.process_assistant_response("done"));
++        all.extend(ctx.generate_final_events());
++
++        let sig_pos = all
++            .iter()
++            .position(|e| e.data["delta"]["type"] == "signature_delta" && e.data["delta"]["signature"] == "sig-1")
++            .expect("first attempt's reasoning block is closed with its signature");
++        let text_start = all
++            .iter()
++            .position(|e| e.event == "content_block_start" && e.data["content_block"]["type"] == "text")
++            .expect("retry output opens a text block");
++        assert!(sig_pos < text_start);
++        let text: String = all
++            .iter()
++            .filter(|e| e.data["delta"]["type"] == "text_delta")
++            .map(|e| e.data["delta"]["text"].as_str().unwrap_or_default().to_string())
++            .collect();
++        assert_eq!(text, "done");
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "end_turn");
++        assert_eq!(all.iter().filter(|e| e.event == "message_start").count(), 1);
++        assert_eq!(all.iter().filter(|e| e.event == "message_stop").count(), 1);
++    }
++
++    #[test]
++    fn test_retry_that_is_again_reasoning_only_keeps_thinking_only_semantics() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let mut all = ctx.generate_initial_events();
++        all.extend(ctx.process_reasoning_content(&reasoning_event("first", "sig-1")));
++        all.extend(ctx.prepare_upstream_retry());
++        all.extend(ctx.process_reasoning_content(&reasoning_event("second", "sig-2")));
++        all.extend(ctx.generate_final_events());
++
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "max_tokens");
++        let thinking_blocks = all
++            .iter()
++            .filter(|e| e.event == "content_block_start" && e.data["content_block"]["type"] == "thinking")
++            .count();
++        assert_eq!(thinking_blocks, 2);
++        assert!(all.iter().any(|e| e.event == "content_block_start" && e.data["content_block"]["type"] == "text"));
++    }
++
++    #[test]
++    fn test_empty_retry_still_pads_thinking_only_message() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _ = ctx.generate_initial_events();
++        let _ = ctx.process_reasoning_content(&reasoning_event("first", "sig-1"));
++        let _ = ctx.prepare_upstream_retry();
++        let all = ctx.generate_final_events();
++
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "max_tokens");
++        assert!(all.iter().any(|e| e.event == "content_block_start" && e.data["content_block"]["type"] == "text"));
++    }
++
+     #[test]
+     fn test_upstream_error_event_ends_stream_with_error() {
+         let mut ctx = StreamContext::new_with_thinking("test-model", 1, false, HashMap::new());
+diff --git a/src/kiro/model/events/base.rs b/src/kiro/model/events/base.rs
+--- a/src/kiro/model/events/base.rs
++++ b/src/kiro/model/events/base.rs
+@@ -137,7 +137,16 @@
+                 let payload = super::ReasoningContentEvent::from_frame(&frame)?;
+                 Ok(Self::ReasoningContent(payload))
+             }
+-            EventType::Unknown => Ok(Self::Unknown {}),
++            EventType::Unknown => {
++                let preview: String = frame.payload_as_str().chars().take(300).collect();
++                tracing::warn!(
++                    event_type = event_type_str,
++                    payload_len = frame.payload.len(),
++                    preview = %preview,
++                    "收到未识别的上游事件类型（已忽略）"
++                );
++                Ok(Self::Unknown {})
++            }
+         }
+     }
+ 
+diff --git a/src/anthropic/malformed_event_fixture.rs b/src/anthropic/malformed_event_fixture.rs
+--- /dev/null
++++ b/src/anthropic/malformed_event_fixture.rs
+@@ -0,0 +1,213 @@
++use std::collections::HashMap;
++use std::convert::Infallible;
++use std::sync::Arc;
++use std::time::Duration;
++
++use axum::{Json, Router, body::Body, routing::post};
++use bytes::Bytes;
++use futures::{StreamExt, stream};
++use parking_lot::Mutex;
++use reqwest::{RequestBuilder, StatusCode};
++use serde_json::{Value, json};
++use tokio::{net::TcpListener, task::JoinSet};
++
++use crate::anthropic::router::create_router_with_provider;
++use crate::kiro::endpoint::{KiroEndpoint, RequestContext};
++use crate::kiro::model::credentials::KiroCredentials;
++use crate::kiro::parser::{crc::crc32, decoder::EventStreamDecoder};
++use crate::kiro::provider::KiroProvider;
++use crate::kiro::token_manager::MultiTokenManager;
++use crate::model::config::Config;
++
++pub enum Mode {
++    Normal,
++    Buffered,
++    NonStream,
++}
++
++pub struct Script {
++    pub bodies: Vec<Bytes>,
++    pub keep_open: bool,
++}
++
++pub struct Observed {
++    pub status: StatusCode,
++    pub body: String,
++    pub requests: Vec<Value>,
++}
++
++struct LoopbackEndpoint(String);
++
++impl KiroEndpoint for LoopbackEndpoint {
++    fn name(&self) -> &'static str {
++        "loopback"
++    }
++
++    fn api_url(&self, _ctx: &RequestContext<'_>) -> String {
++        self.0.clone()
++    }
++
++    fn mcp_url(&self, _ctx: &RequestContext<'_>) -> String {
++        panic!("MCP is outside this fixture")
++    }
++
++    fn decorate_api(&self, request: RequestBuilder, _ctx: &RequestContext<'_>) -> RequestBuilder {
++        request
++    }
++
++    fn decorate_mcp(&self, _request: RequestBuilder, _ctx: &RequestContext<'_>) -> RequestBuilder {
++        panic!("MCP is outside this fixture")
++    }
++
++    fn transform_api_body(&self, body: &str, _ctx: &RequestContext<'_>) -> String {
++        body.to_string()
++    }
++}
++
++pub fn frame(event_type: &str, payload: &str) -> Vec<u8> {
++    raw_frame(
++        &[
++            (":message-type", "event"),
++            (":event-type", event_type),
++            (":content-type", "application/json"),
++        ],
++        payload,
++    )
++}
++
++pub fn raw_frame(fields: &[(&str, &str)], payload: &str) -> Vec<u8> {
++    let mut headers = Vec::new();
++    for (name, value) in fields {
++        headers.push(u8::try_from(name.len()).unwrap());
++        headers.extend_from_slice(name.as_bytes());
++        headers.push(7);
++        headers.extend_from_slice(&u16::try_from(value.len()).unwrap().to_be_bytes());
++        headers.extend_from_slice(value.as_bytes());
++    }
++    let mut wire = Vec::new();
++    wire.extend_from_slice(
++        &u32::try_from(16 + headers.len() + payload.len())
++            .unwrap()
++            .to_be_bytes(),
++    );
++    wire.extend_from_slice(&u32::try_from(headers.len()).unwrap().to_be_bytes());
++    wire.extend_from_slice(&crc32(&wire).to_be_bytes());
++    wire.extend_from_slice(&headers);
++    wire.extend_from_slice(payload.as_bytes());
++    wire.extend_from_slice(&crc32(&wire).to_be_bytes());
++    wire
++}
++
++pub fn body(events: &[(&str, &str)]) -> Bytes {
++    let wire: Vec<u8> = events
++        .iter()
++        .flat_map(|(kind, payload)| frame(kind, payload))
++        .collect();
++    let mut decoder = EventStreamDecoder::new();
++    decoder.feed(&wire).unwrap();
++    let decoded = decoder
++        .decode_iter()
++        .collect::<Result<Vec<_>, _>>()
++        .unwrap();
++    assert_eq!(decoded.len(), events.len(), "fixture framing must be valid");
++    Bytes::from(wire)
++}
++
++async fn serve(tasks: &mut JoinSet<()>, app: Router) -> String {
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let url = format!("http://{}", listener.local_addr().unwrap());
++    tasks.spawn(async move { axum::serve(listener, app).await.unwrap() });
++    url
++}
++
++pub async fn run(script: Script, mode: Mode) -> Observed {
++    run_chunks(script, mode, None).await
++}
++
++pub async fn run_chunks(script: Script, mode: Mode, chunk_size: Option<usize>) -> Observed {
++    let mut tasks = JoinSet::new();
++    let requests = Arc::new(Mutex::new(Vec::new()));
++    let recorded = requests.clone();
++    let upstream = Router::new().route(
++        "/upstream",
++        post(move |Json(request): Json<Value>| {
++            let response_body = {
++                let mut recorded = recorded.lock();
++                let index = recorded.len().min(script.bodies.len() - 1);
++                recorded.push(request);
++                script.bodies[index].clone()
++            };
++            async move {
++                let chunks = match chunk_size {
++                    Some(size) => response_body
++                        .chunks(size)
++                        .map(Bytes::copy_from_slice)
++                        .collect(),
++                    None => vec![response_body],
++                };
++                let chunk = stream::iter(chunks.into_iter().map(Ok::<_, Infallible>));
++                let response_body = match script.keep_open {
++                    true => Body::from_stream(chunk.chain(stream::pending())),
++                    false => Body::from_stream(chunk),
++                };
++                (
++                    [("content-type", "application/vnd.amazon.eventstream")],
++                    response_body,
++                )
++            }
++        }),
++    );
++    let upstream_url = serve(&mut tasks, upstream).await;
++    let credentials = KiroCredentials {
++        id: Some(1),
++        auth_method: Some("api_key".to_string()),
++        kiro_api_key: Some("local-fixture-only".to_string()),
++        machine_id: Some("0".repeat(64)),
++        ..Default::default()
++    };
++    let manager =
++        MultiTokenManager::new(Config::default(), vec![credentials], None, None, false).unwrap();
++    let endpoint: Arc<dyn KiroEndpoint> =
++        Arc::new(LoopbackEndpoint(format!("{upstream_url}/upstream")));
++    let endpoints = HashMap::from([(endpoint.name().to_string(), endpoint)]);
++    let provider =
++        KiroProvider::with_proxy(Arc::new(manager), None, endpoints, "loopback".to_string());
++    let downstream_url = serve(
++        &mut tasks,
++        create_router_with_provider("fixture-key", Some(provider), true),
++    )
++    .await;
++    let (path, streaming) = match mode {
++        Mode::Normal => ("/v1/messages", true),
++        Mode::Buffered => ("/cc/v1/messages", true),
++        Mode::NonStream => ("/v1/messages", false),
++    };
++    let client = reqwest::Client::builder()
++        .no_proxy()
++        .timeout(Duration::from_secs(3))
++        .build()
++        .unwrap();
++    let response = client
++        .post(format!("{downstream_url}{path}"))
++        .header("x-api-key", "fixture-key")
++        .json(&json!({
++            "model": "claude-sonnet-4-5", "max_tokens": 64, "stream": streaming,
++            "thinking": { "type": "enabled", "budget_tokens": 1024 },
++            "messages": [{ "role": "user", "content": "fixture" }]
++        }))
++        .send()
++        .await
++        .unwrap();
++    let status = response.status();
++    let body = response
++        .text()
++        .await
++        .expect("downstream must terminate without waiting for upstream EOF");
++    let requests = requests.lock().clone();
++    tasks.shutdown().await;
++    Observed {
++        status,
++        body,
++        requests,
++    }
++}
+diff --git a/src/anthropic/malformed_event_tests.rs b/src/anthropic/malformed_event_tests.rs
+--- /dev/null
++++ b/src/anthropic/malformed_event_tests.rs
+@@ -0,0 +1,264 @@
++use super::malformed_event_fixture as fixture;
++
++use fixture::{Mode, Observed, Script, body};
++use reqwest::StatusCode;
++use serde_json::Value;
++
++const TEXT: (&str, &str) = (
++    "assistantResponseEvent",
++    r#"{"content":"text-before-malformed-long-enough-to-start"}"#,
++);
++const REASONING: (&str, &str) = (
++    "reasoningContentEvent",
++    r#"{"text":"reasoning-before-malformed","signature":"sig"}"#,
++);
++const TOOL: (&str, &str) = (
++    "toolUseEvent",
++    r#"{"name":"fixture_tool","toolUseId":"tool-1","input":"{","stop":false}"#,
++);
++const LATER: (&str, &str) = (
++    "assistantResponseEvent",
++    r#"{"content":"later-frame-must-not-appear"}"#,
++);
++
++fn sse(observed: &Observed) -> Vec<Value> {
++    observed
++        .body
++        .lines()
++        .filter_map(|line| line.strip_prefix("data: "))
++        .map(|data| serde_json::from_str(data).unwrap())
++        .collect()
++}
++
++fn text(events: &[Value]) -> String {
++    events
++        .iter()
++        .filter_map(|event| event["delta"]["text"].as_str())
++        .collect()
++}
++
++fn assert_stream_failure(observed: &Observed, block_type: &str) {
++    assert_eq!(observed.status, StatusCode::OK);
++    let events = sse(observed);
++    assert!(
++        events
++            .iter()
++            .any(|event| event["content_block"]["type"] == block_type),
++        "prefix block missing: {}",
++        observed.body
++    );
++    assert_eq!(
++        events
++            .iter()
++            .filter(|event| event["type"] == "error" && event["error"]["type"] == "api_error")
++            .count(),
++        1,
++        "malformed event must emit one api_error: {}",
++        observed.body
++    );
++    assert!(
++        !events
++            .iter()
++            .any(|event| event["type"] == "message_delta" || event["type"] == "message_stop"),
++        "malformed event must not finish successfully: {}",
++        observed.body
++    );
++    assert!(
++        !text(&events).contains("later-frame-must-not-appear"),
++        "later frames in the same HTTP chunk must be discarded"
++    );
++    assert_eq!(events.last().unwrap()["type"], "error");
++    assert_eq!(
++        observed.requests.len(),
++        1,
++        "malformed payload must never trigger reasoning-only retry"
++    );
++}
++
++macro_rules! malformed_stream_tests {
++    ($($name:ident, $mode:ident, $prefix:ident, $kind:literal, $payload:literal, $block:literal);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![body(&[$prefix, ($kind, $payload), LATER])], keep_open: false };
++            let observed = fixture::run(given, Mode::$mode).await;
++            assert_stream_failure(&observed, $block);
++        }
++    )*};
++}
++
++malformed_stream_tests! {
++    normal_errors_when_assistant_type_invalid, Normal, TEXT, "assistantResponseEvent", r#"{"content":7}"#, "text";
++    normal_errors_when_assistant_json_invalid, Normal, TEXT, "assistantResponseEvent", "{", "text";
++    normal_errors_when_tool_type_invalid, Normal, TOOL, "toolUseEvent", r#"{"name":7,"toolUseId":"tool-1"}"#, "tool_use";
++    normal_errors_when_tool_json_invalid, Normal, TOOL, "toolUseEvent", "{", "tool_use";
++    normal_errors_when_reasoning_type_invalid, Normal, REASONING, "reasoningContentEvent", r#"{"text":7}"#, "thinking";
++    normal_errors_when_reasoning_json_invalid, Normal, REASONING, "reasoningContentEvent", "{", "thinking";
++    buffered_errors_when_assistant_type_invalid, Buffered, TEXT, "assistantResponseEvent", r#"{"content":7}"#, "text";
++    buffered_errors_when_assistant_json_invalid, Buffered, TEXT, "assistantResponseEvent", "{", "text";
++    buffered_errors_when_tool_type_invalid, Buffered, TOOL, "toolUseEvent", r#"{"name":7,"toolUseId":"tool-1"}"#, "tool_use";
++    buffered_errors_when_tool_json_invalid, Buffered, TOOL, "toolUseEvent", "{", "tool_use";
++    buffered_errors_when_reasoning_type_invalid, Buffered, REASONING, "reasoningContentEvent", r#"{"text":7}"#, "thinking";
++    buffered_errors_when_reasoning_json_invalid, Buffered, REASONING, "reasoningContentEvent", "{", "thinking";
++}
++
++macro_rules! malformed_non_stream_tests {
++    ($($name:ident, $prefix:ident, $kind:literal, $payload:literal);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![body(&[$prefix, ($kind, $payload), LATER])], keep_open: false };
++            let observed = fixture::run(given, Mode::NonStream).await;
++            assert_eq!(observed.status, StatusCode::BAD_GATEWAY, "malformed payload must return 502: {}", observed.body);
++            let error: Value = serde_json::from_str(&observed.body).unwrap();
++            assert_eq!(error.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["error"]);
++            assert_eq!(error["error"]["type"], "api_error");
++            assert!(error.get("content").is_none());
++        }
++    )*};
++}
++
++malformed_non_stream_tests! {
++    non_stream_502_when_assistant_type_invalid, TEXT, "assistantResponseEvent", r#"{"content":7}"#;
++    non_stream_502_when_assistant_json_invalid, TEXT, "assistantResponseEvent", "{";
++    non_stream_502_when_tool_type_invalid, TOOL, "toolUseEvent", r#"{"name":7,"toolUseId":"tool-1"}"#;
++    non_stream_502_when_tool_json_invalid, TOOL, "toolUseEvent", "{";
++    non_stream_502_when_reasoning_type_invalid, REASONING, "reasoningContentEvent", r#"{"text":7}"#;
++    non_stream_502_when_reasoning_json_invalid, REASONING, "reasoningContentEvent", "{";
++}
++
++macro_rules! unknown_tests {
++    ($($name:ident, $mode:ident);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![body(&[TEXT, ("futureEvent", r#"{"newField":true}"#), LATER])], keep_open: false };
++            let observed = fixture::run(given, Mode::$mode).await;
++            assert_eq!(observed.status, StatusCode::OK);
++            let output = match Mode::$mode {
++                Mode::Normal | Mode::Buffered => {
++                    let events = sse(&observed);
++                    assert_eq!(events.last().unwrap()["type"], "message_stop");
++                    assert!(!events.iter().any(|event| event["type"] == "error"));
++                    text(&events)
++                }
++                Mode::NonStream => {
++                    let response: Value = serde_json::from_str(&observed.body).unwrap();
++                    assert_eq!(response["type"], "message");
++                    response["content"][0]["text"].as_str().unwrap().to_string()
++                }
++            };
++            assert_eq!(output, "text-before-malformed-long-enough-to-startlater-frame-must-not-appear");
++            assert_eq!(observed.requests.len(), 1);
++        }
++    )*};
++}
++
++unknown_tests! {
++    normal_continues_when_event_unknown, Normal;
++    buffered_continues_when_event_unknown, Buffered;
++    non_stream_continues_when_event_unknown, NonStream;
++}
++
++macro_rules! open_stream_tests {
++    ($($name:ident, $mode:ident);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![body(&[REASONING, ("toolUseEvent", "{"), LATER])], keep_open: true };
++            let observed = fixture::run(given, Mode::$mode).await;
++            assert_stream_failure(&observed, "thinking");
++        }
++    )*};
++}
++
++open_stream_tests! {
++    normal_terminates_when_malformed_without_upstream_eof, Normal;
++    buffered_terminates_when_malformed_without_upstream_eof, Buffered;
++}
++
++#[tokio::test]
++async fn normal_errors_without_retry_when_tool_malformed_after_reasoning_eof() {
++    let given = Script {
++        bodies: vec![body(&[REASONING, ("toolUseEvent", "{")])],
++        keep_open: false,
++    };
++    let observed = fixture::run(given, Mode::Normal).await;
++    assert_stream_failure(&observed, "thinking");
++}
++
++macro_rules! first_frame_tests {
++    ($($name:ident, $mode:ident);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![body(&[("assistantResponseEvent", "{"), LATER])], keep_open: false };
++            let observed = fixture::run(given, Mode::$mode).await;
++            let events = sse(&observed);
++            assert_eq!(events.last().unwrap()["type"], "error");
++            assert_eq!(events.last().unwrap()["error"]["type"], "api_error");
++            assert!(!events.iter().any(|event| event["type"] == "message_delta" || event["type"] == "message_stop"));
++            assert_eq!(text(&events), "");
++            assert_eq!(observed.requests.len(), 1);
++        }
++    )*};
++}
++
++first_frame_tests! {
++    normal_errors_when_first_frame_malformed, Normal;
++    buffered_errors_when_first_frame_malformed, Buffered;
++}
++
++#[tokio::test]
++async fn normal_retries_once_when_valid_reasoning_only_eof() {
++    let given = Script {
++        bodies: vec![body(&[REASONING]), body(&[TEXT])],
++        keep_open: false,
++    };
++    let observed = fixture::run(given, Mode::Normal).await;
++    let events = sse(&observed);
++    assert_eq!(observed.requests.len(), 2);
++    let continuation = "/conversationState/agentContinuationId";
++    assert_ne!(
++        observed.requests[0].pointer(continuation),
++        observed.requests[1].pointer(continuation)
++    );
++    assert_eq!(
++        events
++            .iter()
++            .filter(|event| event["type"] == "message_start")
++            .count(),
++        1
++    );
++    assert_eq!(
++        events
++            .iter()
++            .filter(|event| event["type"] == "message_stop")
++            .count(),
++        1
++    );
++    assert_eq!(text(&events), "text-before-malformed-long-enough-to-start");
++    assert!(
++        events
++            .iter()
++            .any(|event| event["delta"]["stop_reason"] == "end_turn")
++    );
++}
++
++#[tokio::test]
++async fn normal_stops_retrying_when_second_attempt_reasoning_only() {
++    let given = Script {
++        bodies: vec![body(&[REASONING]), body(&[REASONING])],
++        keep_open: false,
++    };
++    let observed = fixture::run(given, Mode::Normal).await;
++    let events = sse(&observed);
++    assert_eq!(observed.requests.len(), 2);
++    assert_eq!(
++        events
++            .iter()
++            .filter(|event| event["type"] == "message_stop")
++            .count(),
++        1
++    );
++    assert!(
++        events
++            .iter()
++            .any(|event| event["delta"]["stop_reason"] == "max_tokens")
++    );
++}
+diff --git a/src/anthropic/frame_error_fixture.rs b/src/anthropic/frame_error_fixture.rs
+--- /dev/null
++++ b/src/anthropic/frame_error_fixture.rs
+@@ -0,0 +1,137 @@
++use super::fixture::{Mode, Observed, body, frame};
++use bytes::Bytes;
++use reqwest::StatusCode;
++use serde_json::Value;
++
++use crate::kiro::parser::{
++    crc::crc32,
++    decoder::{DEFAULT_MAX_BUFFER_SIZE, EventStreamDecoder},
++    error::ParseError,
++    frame::parse_frame,
++};
++
++pub const TEXT: (&str, &str) = (
++    "assistantResponseEvent",
++    r#"{"content":"text-before-corrupt-long-enough-to-start"}"#,
++);
++pub const REASONING: (&str, &str) = (
++    "reasoningContentEvent",
++    r#"{"text":"reasoning-before-corrupt","signature":"sig"}"#,
++);
++pub const TOOL: (&str, &str) = (
++    "toolUseEvent",
++    r#"{"name":"fixture_tool","toolUseId":"tool-1","input":"{","stop":false}"#,
++);
++const LATER: (&str, &str) = (
++    "assistantResponseEvent",
++    r#"{"content":"trailing-frame-must-not-appear"}"#,
++);
++
++pub fn bad_crc_frame() -> Vec<u8> {
++    let mut wire = frame("assistantResponseEvent", r#"{"content":"corrupt-frame"}"#);
++    let total = wire.len();
++    wire[total - 1] ^= 1;
++    assert_eq!(
++        usize::try_from(u32::from_be_bytes(wire[..4].try_into().unwrap())).unwrap(),
++        total
++    );
++    let headers = usize::try_from(u32::from_be_bytes(wire[4..8].try_into().unwrap())).unwrap();
++    assert_eq!(16 + headers + r#"{"content":"corrupt-frame"}"#.len(), total);
++    assert_eq!(
++        crc32(&wire[..8]),
++        u32::from_be_bytes(wire[8..12].try_into().unwrap())
++    );
++    assert!(matches!(
++        parse_frame(&wire),
++        Err(ParseError::MessageCrcMismatch { .. })
++    ));
++    wire
++}
++
++pub fn corrupt_wire(prefix: &[(&str, &str)]) -> Bytes {
++    let mut wire = body(prefix).to_vec();
++    wire.extend(bad_crc_frame());
++    wire.extend(body(&[LATER]));
++    Bytes::from(wire)
++}
++
++pub fn overflow_wire() -> Bytes {
++    let mut wire = body(&[TEXT]).to_vec();
++    wire.resize(DEFAULT_MAX_BUFFER_SIZE + 1, 0);
++    let mut decoder = EventStreamDecoder::new();
++    assert!(
++        matches!(decoder.feed(&wire), Err(ParseError::BufferOverflow { size, max })
++        if size == DEFAULT_MAX_BUFFER_SIZE + 1 && max == DEFAULT_MAX_BUFFER_SIZE)
++    );
++    Bytes::from(wire)
++}
++
++pub fn assert_failure(observed: &Observed, mode: Mode, prefix: Option<&str>) -> String {
++    assert!(!observed.body.contains("trailing-frame-must-not-appear"));
++    assert!(!observed.body.contains("corrupt-frame"));
++    match mode {
++        Mode::NonStream => {
++            assert_eq!(
++                observed.status,
++                StatusCode::BAD_GATEWAY,
++                "{}",
++                observed.body
++            );
++            let error: Value = serde_json::from_str(&observed.body).unwrap();
++            assert_eq!(
++                error.as_object().unwrap().keys().collect::<Vec<_>>(),
++                vec!["error"]
++            );
++            assert_eq!(error["error"]["type"], "api_error");
++            error["error"]["message"].as_str().unwrap().to_string()
++        }
++        Mode::Normal | Mode::Buffered => {
++            assert_eq!(observed.status, StatusCode::OK);
++            let events: Vec<Value> = observed
++                .body
++                .lines()
++                .filter_map(|line| line.strip_prefix("data: "))
++                .map(|data| serde_json::from_str(data).unwrap())
++                .collect();
++            let text: String = events
++                .iter()
++                .filter_map(|event| event["delta"]["text"].as_str())
++                .collect();
++            assert!(!text.contains("trailing-frame-must-not-appear"));
++            assert!(!text.contains("corrupt-frame"));
++            assert_eq!(
++                events
++                    .iter()
++                    .filter(|event| event["type"] == "error")
++                    .count(),
++                1,
++                "{}",
++                observed.body
++            );
++            assert!(
++                !events.iter().any(
++                    |event| event["type"] == "message_delta" || event["type"] == "message_stop"
++                )
++            );
++            if let Some(block) = prefix {
++                assert!(
++                    events
++                        .iter()
++                        .any(|event| event["content_block"]["type"] == block),
++                    "{}",
++                    observed.body
++                );
++            } else {
++                assert!(
++                    !events
++                        .iter()
++                        .any(|event| event["type"] == "content_block_delta")
++                );
++            }
++            let terminal = events.last().unwrap();
++            assert_eq!(terminal["type"], "error");
++            assert_eq!(terminal["error"]["type"], "api_error");
++            terminal["error"]["message"].as_str().unwrap().to_string()
++        }
++    }
++}
+diff --git a/src/anthropic/frame_error_tests.rs b/src/anthropic/frame_error_tests.rs
+--- /dev/null
++++ b/src/anthropic/frame_error_tests.rs
+@@ -0,0 +1,124 @@
++use super::malformed_event_fixture as fixture;
++#[path = "frame_error_fixture.rs"]
++pub(super) mod wire;
++
++use crate::kiro::parser::{decoder::EventStreamDecoder, error::ParseError};
++use fixture::{Mode, Observed, Script};
++use futures::StreamExt;
++use reqwest::StatusCode;
++use std::collections::HashMap;
++use std::time::Duration;
++use wire::{REASONING, TEXT, TOOL, assert_failure, bad_crc_frame, corrupt_wire, overflow_wire};
++
++macro_rules! crc_http_tests {
++    ($($name:ident, $mode:ident, $prefix:expr, $block:expr, $split:expr, $open:expr);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script { bodies: vec![corrupt_wire($prefix)], keep_open: $open };
++            let observed = fixture::run_chunks(given, Mode::$mode, $split).await;
++            assert_eq!(observed.requests.len(), 1, "frame errors must not retry");
++            let message = assert_failure(&observed, Mode::$mode, $block);
++            assert!(message.contains("Message CRC"), "{message}");
++        }
++    )*};
++}
++
++crc_http_tests! {
++    normal_errors_when_first_frame_crc_corrupt, Normal, &[], None, None, false;
++    buffered_errors_when_first_frame_crc_corrupt, Buffered, &[], None, None, false;
++    non_stream_errors_when_first_frame_crc_corrupt, NonStream, &[], None, None, false;
++    normal_errors_when_frame_crc_corrupt_after_text, Normal, &[TEXT], Some("text"), None, false;
++    buffered_errors_when_frame_crc_corrupt_after_text, Buffered, &[TEXT], Some("text"), None, false;
++    non_stream_errors_when_frame_crc_corrupt_after_text, NonStream, &[TEXT], None, None, false;
++    normal_errors_when_frame_crc_corrupt_after_reasoning, Normal, &[REASONING], Some("thinking"), None, false;
++    buffered_errors_when_frame_crc_corrupt_after_reasoning, Buffered, &[REASONING], Some("thinking"), None, false;
++    non_stream_errors_when_frame_crc_corrupt_after_reasoning, NonStream, &[REASONING], None, None, false;
++    normal_errors_when_frame_crc_corrupt_after_tool, Normal, &[TOOL], Some("tool_use"), None, false;
++    buffered_errors_when_frame_crc_corrupt_after_tool, Buffered, &[TOOL], Some("tool_use"), None, false;
++    non_stream_errors_when_frame_crc_corrupt_after_tool, NonStream, &[TOOL], None, None, false;
++    normal_errors_when_frame_crc_split_across_chunks, Normal, &[TEXT], Some("text"), Some(1), false;
++    buffered_errors_when_frame_crc_split_across_chunks, Buffered, &[TEXT], Some("text"), Some(1), false;
++    non_stream_errors_when_frame_crc_split_across_chunks, NonStream, &[TEXT], None, Some(1), false;
++    normal_terminates_when_corrupt_frame_without_upstream_eof, Normal, &[REASONING], Some("thinking"), None, true;
++    buffered_terminates_when_corrupt_frame_without_upstream_eof, Buffered, &[REASONING], Some("thinking"), None, true;
++}
++
++#[test]
++fn decoder_reports_message_crc_when_wire_valid_except_final_crc() {
++    let given = corrupt_wire(&[TEXT]);
++    let mut decoder = EventStreamDecoder::new();
++    decoder.feed(&given).unwrap();
++    let results: Vec<_> = decoder.decode_iter().collect();
++    assert_eq!(results.len(), 2);
++    assert_eq!(results[0].as_ref().unwrap().event_type(), Some(TEXT.0));
++    assert!(matches!(
++        results[1],
++        Err(ParseError::MessageCrcMismatch { .. })
++    ));
++}
++
++#[test]
++fn decoder_reports_message_crc_when_frame_split_at_every_byte() {
++    let given = bad_crc_frame();
++    let mut decoder = EventStreamDecoder::new();
++    for byte in &given[..given.len() - 1] {
++        decoder.feed(&[*byte]).unwrap();
++        assert!(decoder.decode_iter().next().is_none());
++    }
++    decoder.feed(&given[given.len() - 1..]).unwrap();
++    let observed = decoder.decode_iter().next().unwrap();
++    assert!(matches!(
++        observed,
++        Err(ParseError::MessageCrcMismatch { .. })
++    ));
++}
++
++macro_rules! overflow_stream_tests {
++    ($($name:ident, $mode:ident);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = reqwest::Response::from(http::Response::new(overflow_wire()));
++            let output = match Mode::$mode {
++                Mode::Normal => {
++                    let mut ctx = super::StreamContext::new_with_thinking("fixture", 1, true, HashMap::new());
++                    let initial = ctx.generate_initial_events();
++                    let stream = super::create_sse_stream(given, ctx, initial, None);
++                    tokio::time::timeout(Duration::from_secs(3), stream.collect::<Vec<_>>()).await.unwrap()
++                }
++                Mode::Buffered => {
++                    let ctx = super::BufferedStreamContext::new("fixture", 1, true, HashMap::new());
++                    let stream = super::create_buffered_sse_stream(given, ctx);
++                    tokio::time::timeout(Duration::from_secs(3), stream.collect::<Vec<_>>()).await.unwrap()
++                }
++                Mode::NonStream => unreachable!(),
++            };
++            let observed = Observed {
++                status: StatusCode::OK,
++                body: String::from_utf8(output.into_iter().flat_map(Result::unwrap).collect()).unwrap(),
++                requests: Vec::new(),
++            };
++            let message = assert_failure(&observed, Mode::$mode, None);
++            assert!(message.contains("16777217") && message.contains("16777216"), "{message}");
++        }
++    )*};
++}
++
++overflow_stream_tests! {
++    normal_errors_when_decoder_feed_overflows, Normal;
++    buffered_errors_when_decoder_feed_overflows, Buffered;
++}
++
++#[tokio::test]
++async fn non_stream_errors_when_decoder_feed_overflows() {
++    let given = Script {
++        bodies: vec![overflow_wire()],
++        keep_open: false,
++    };
++    let observed = fixture::run(given, Mode::NonStream).await;
++    assert_eq!(observed.requests.len(), 1);
++    let message = assert_failure(&observed, Mode::NonStream, None);
++    assert!(
++        message.contains("16777217") && message.contains("16777216"),
++        "{message}"
++    );
++}
+diff --git a/src/kiro/parser/decoder.rs b/src/kiro/parser/decoder.rs
+--- a/src/kiro/parser/decoder.rs
++++ b/src/kiro/parser/decoder.rs
+@@ -220,6 +220,26 @@
+         DecodeIter { decoder: self }
+     }
+ 
++    /// Check EOF completeness after draining all available frames.
++    pub fn finish(&self) -> ParseResult<()> {
++        let available = self.buffer.len();
++        if available == 0 {
++            return Ok(());
++        }
++        let needed = if available < PRELUDE_SIZE {
++            PRELUDE_SIZE
++        } else {
++            let length = u32::from_be_bytes([
++                self.buffer[0], self.buffer[1], self.buffer[2], self.buffer[3],
++            ]);
++            usize::try_from(length).map_err(|_| ParseError::MessageTooLarge {
++                length,
++                max: super::frame::MAX_MESSAGE_SIZE,
++            })?
++        };
++        Err(ParseError::Incomplete { needed, available })
++    }
++
+     /// 尝试容错恢复
+     ///
+     /// 根据错误类型采用不同的恢复策略（参考 kiro-kt 的设计）：
+diff --git a/src/kiro/parser/mod.rs b/src/kiro/parser/mod.rs
+--- a/src/kiro/parser/mod.rs
++++ b/src/kiro/parser/mod.rs
+@@ -8,3 +8,6 @@
+ pub mod error;
+ pub mod frame;
+ pub mod header;
++
++#[cfg(test)]
++mod eof_tests;
+diff --git a/src/anthropic/eof_event_tests.rs b/src/anthropic/eof_event_tests.rs
+--- /dev/null
++++ b/src/anthropic/eof_event_tests.rs
+@@ -0,0 +1,156 @@
++use super::frame_error_tests::wire::{REASONING, TEXT, TOOL, assert_failure, bad_crc_frame};
++use super::malformed_event_fixture as fixture;
++use crate::kiro::parser::frame::{PRELUDE_SIZE, parse_frame};
++use bytes::Bytes;
++use fixture::{Mode, Script, body, frame};
++
++#[derive(Clone, Copy)]
++enum Cut {
++    Prelude,
++    Payload,
++    Crc,
++}
++
++fn partial_frame(cut: Cut) -> Vec<u8> {
++    let payload = r#"{"content":"trailing-frame-must-not-appear"}"#;
++    let mut wire = frame(TEXT.0, payload);
++    assert!(matches!(parse_frame(&wire), Ok(Some(_))));
++    let end = match cut {
++        Cut::Prelude => PRELUDE_SIZE / 2,
++        Cut::Payload => wire.len() - 4 - payload.len() / 2,
++        Cut::Crc => wire.len() - 1,
++    };
++    wire.truncate(end);
++    assert!(matches!(parse_frame(&wire), Ok(None)));
++    wire
++}
++
++fn incomplete_wire(prefix: &[(&str, &str)], cut: Cut) -> Bytes {
++    let mut wire = body(prefix).to_vec();
++    wire.extend(partial_frame(cut));
++    Bytes::from(wire)
++}
++
++macro_rules! eof_cases {
++    ($mode:ident, $cut:ident; $($name:ident, $prefix:expr, $block:expr, $split:expr);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script {
++                bodies: vec![incomplete_wire($prefix, Cut::$cut)],
++                keep_open: false,
++            };
++            let observed = fixture::run_chunks(given, Mode::$mode, $split).await;
++            assert_eq!(observed.requests.len(), 1, "incomplete EOF must not retry: {}", observed.body);
++            let message = assert_failure(&observed, Mode::$mode, $block);
++            assert!(message.starts_with("incomplete upstream event stream:"), "{message}");
++        }
++    )*};
++}
++
++macro_rules! eof_http_tests {
++    ($module:ident, $mode:ident, $cut:ident) => {
++        mod $module {
++            use super::*;
++            eof_cases! {
++                $mode, $cut;
++                rejects_when_first_frame_incomplete, &[], None, None;
++                rejects_when_incomplete_after_text, &[TEXT], Some("text"), None;
++                rejects_when_incomplete_after_reasoning, &[REASONING], Some("thinking"), None;
++                rejects_when_incomplete_after_tool, &[TOOL], Some("tool_use"), None;
++                rejects_when_first_frame_byte_split, &[], None, Some(1);
++                rejects_when_text_prefix_byte_split, &[TEXT], Some("text"), Some(1);
++                rejects_when_reasoning_prefix_byte_split, &[REASONING], Some("thinking"), Some(1);
++                rejects_when_tool_prefix_byte_split, &[TOOL], Some("tool_use"), Some(1);
++            }
++        }
++    };
++}
++
++eof_http_tests!(normal_half_prelude, Normal, Prelude);
++eof_http_tests!(buffered_half_prelude, Buffered, Prelude);
++eof_http_tests!(non_stream_half_prelude, NonStream, Prelude);
++eof_http_tests!(normal_partial_payload, Normal, Payload);
++eof_http_tests!(buffered_partial_payload, Buffered, Payload);
++eof_http_tests!(non_stream_partial_payload, NonStream, Payload);
++eof_http_tests!(normal_missing_crc_byte, Normal, Crc);
++eof_http_tests!(buffered_missing_crc_byte, Buffered, Crc);
++eof_http_tests!(non_stream_missing_crc_byte, NonStream, Crc);
++
++macro_rules! first_error_tests {
++    ($module:ident, $mode:ident) => {
++        mod $module {
++            use super::*;
++
++            #[tokio::test]
++            async fn preserves_crc_when_incomplete_frame_follows() {
++                let mut wire = body(&[TEXT]).to_vec();
++                wire.extend(bad_crc_frame());
++                wire.extend(partial_frame(Cut::Crc));
++                let given = Script {
++                    bodies: vec![Bytes::from(wire)],
++                    keep_open: false,
++                };
++                let observed = fixture::run(given, Mode::$mode).await;
++                let message = assert_failure(&observed, Mode::$mode, Some("text"));
++                assert!(message.contains("Message CRC"), "{message}");
++                assert_eq!(observed.requests.len(), 1);
++            }
++
++            #[tokio::test]
++            async fn preserves_payload_error_when_incomplete_frame_follows() {
++                let mut wire = body(&[TEXT, ("toolUseEvent", "{")]).to_vec();
++                wire.extend(partial_frame(Cut::Crc));
++                let given = Script {
++                    bodies: vec![Bytes::from(wire)],
++                    keep_open: false,
++                };
++                let observed = fixture::run(given, Mode::$mode).await;
++                let message = assert_failure(&observed, Mode::$mode, Some("text"));
++                assert!(
++                    message.starts_with("invalid upstream toolUseEvent payload"),
++                    "{message}"
++                );
++                assert_eq!(observed.requests.len(), 1);
++            }
++        }
++    };
++}
++
++first_error_tests!(normal_first_error, Normal);
++first_error_tests!(buffered_first_error, Buffered);
++first_error_tests!(non_stream_first_error, NonStream);
++
++#[tokio::test]
++async fn transport_completes_normally_when_eventstream_frame_incomplete() {
++    use axum::{Router, body::Body, routing::get};
++    use futures::stream;
++    use std::{convert::Infallible, time::Duration};
++    use tokio::{net::TcpListener, task::JoinSet};
++
++    let given = incomplete_wire(&[REASONING], Cut::Crc);
++    let chunks: Vec<_> = given.chunks(1).map(Bytes::copy_from_slice).collect();
++    let app =
++        Router::new().route(
++            "/",
++            get(move || {
++                let chunks = chunks.clone();
++                async move {
++                    Body::from_stream(stream::iter(chunks.into_iter().map(Ok::<_, Infallible>)))
++                }
++            }),
++        );
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let url = format!("http://{}", listener.local_addr().unwrap());
++    let mut tasks = JoinSet::new();
++    tasks.spawn(async move { axum::serve(listener, app).await.unwrap() });
++    let client = reqwest::Client::builder()
++        .no_proxy()
++        .timeout(Duration::from_secs(3))
++        .build()
++        .unwrap();
++
++    let observed = client.get(url).send().await.unwrap().bytes().await.unwrap();
++
++    assert_eq!(observed, given);
++    tasks.shutdown().await;
++}
+diff --git a/src/kiro/parser/eof_tests.rs b/src/kiro/parser/eof_tests.rs
+--- /dev/null
++++ b/src/kiro/parser/eof_tests.rs
+@@ -0,0 +1,105 @@
++use super::{crc::crc32, decoder::EventStreamDecoder, error::ParseError, frame::PRELUDE_SIZE};
++
++fn frame(payload: &[u8]) -> Vec<u8> {
++    let mut wire = Vec::new();
++    wire.extend_from_slice(&u32::try_from(16 + payload.len()).unwrap().to_be_bytes());
++    wire.extend_from_slice(&0u32.to_be_bytes());
++    wire.extend_from_slice(&crc32(&wire).to_be_bytes());
++    wire.extend_from_slice(payload);
++    wire.extend_from_slice(&crc32(&wire).to_be_bytes());
++    wire
++}
++
++#[test]
++fn finish_succeeds_when_stream_empty() {
++    let given = EventStreamDecoder::new();
++    let observed = given.finish();
++    assert!(observed.is_ok());
++}
++
++#[test]
++fn finish_succeeds_when_complete_empty_frame_drained() {
++    let mut given = EventStreamDecoder::new();
++    given.feed(&frame(&[])).unwrap();
++    let frames = given.decode_iter().collect::<Result<Vec<_>, _>>().unwrap();
++    assert_eq!(frames.len(), 1);
++    let observed = given.finish();
++    assert!(observed.is_ok());
++}
++
++macro_rules! incomplete_tests {
++    ($($name:ident, $available:expr, $needed:expr);* $(;)?) => {$ (
++        #[test]
++        fn $name() {
++            let wire = frame(b"payload");
++            let mut given = EventStreamDecoder::new();
++            given.feed(&wire[..$available]).unwrap();
++            assert!(given.decode_iter().next().is_none());
++            let observed = given.finish();
++            assert!(matches!(observed, Err(ParseError::Incomplete { needed, available })
++                if needed == $needed && available == $available));
++        }
++    )*};
++}
++
++incomplete_tests! {
++    finish_rejects_when_half_prelude, 6, PRELUDE_SIZE;
++    finish_rejects_when_partial_payload, PRELUDE_SIZE + 3, 23;
++    finish_rejects_when_crc_byte_missing, 22, 23;
++}
++
++#[test]
++fn finish_rejects_when_any_nonempty_frame_prefix_remaining() {
++    let wire = frame(b"payload");
++    for available in 1..wire.len() {
++        let mut given = EventStreamDecoder::new();
++        given.feed(&wire[..available]).unwrap();
++        assert!(given.decode_iter().next().is_none());
++        let observed = given.finish();
++        let expected = if available < PRELUDE_SIZE {
++            PRELUDE_SIZE
++        } else {
++            wire.len()
++        };
++        assert!(
++            matches!(observed, Err(ParseError::Incomplete { needed, available: actual })
++            if needed == expected && actual == available)
++        );
++    }
++}
++
++#[test]
++fn decoding_continues_when_missing_bytes_fed_after_finish_error() {
++    let wire = frame(b"payload");
++    let mut given = EventStreamDecoder::new();
++    given.feed(&wire[..wire.len() - 1]).unwrap();
++    assert!(given.decode_iter().next().is_none());
++    assert!(matches!(given.finish(), Err(ParseError::Incomplete { .. })));
++
++    given.feed(&wire[wire.len() - 1..]).unwrap();
++
++    let frames = given.decode_iter().collect::<Result<Vec<_>, _>>().unwrap();
++    assert_eq!(frames.len(), 1);
++    assert_eq!(frames[0].payload, b"payload");
++    assert!(given.finish().is_ok());
++}
++
++#[test]
++fn recovery_continues_when_crc_error_precedes_clean_boundary() {
++    let mut corrupt = frame(b"corrupt");
++    *corrupt.last_mut().unwrap() ^= 1;
++    corrupt.extend(frame(b"valid"));
++    let mut given = EventStreamDecoder::new();
++    given.feed(&corrupt).unwrap();
++    assert!(matches!(
++        given.decode_iter().next(),
++        Some(Err(ParseError::MessageCrcMismatch { .. }))
++    ));
++
++    given.feed(&[]).unwrap();
++
++    let frames = given.decode_iter().collect::<Result<Vec<_>, _>>().unwrap();
++    assert_eq!(frames.len(), 1);
++    assert_eq!(frames[0].payload, b"valid");
++    assert!(given.finish().is_ok());
++}
+diff --git a/src/anthropic/first_error_tests.rs b/src/anthropic/first_error_tests.rs
+--- /dev/null
++++ b/src/anthropic/first_error_tests.rs
+@@ -0,0 +1,234 @@
++use super::frame_error_tests::wire::bad_crc_frame;
++use super::malformed_event_fixture as fixture;
++use bytes::Bytes;
++use fixture::{Mode, Observed, Script, frame, raw_frame};
++use reqwest::StatusCode;
++use serde_json::Value;
++
++use crate::kiro::model::events::Event;
++use crate::kiro::parser::{decoder::EventStreamDecoder, error::ParseError, frame::parse_frame};
++
++const PAYLOAD: &str = r#"{"message":"slowdown"}"#;
++const LATER: &str = "trailing-frame-must-not-appear";
++
++#[derive(Clone, Copy)]
++enum Kind {
++    Error,
++    Exception,
++}
++
++#[derive(Clone, Copy)]
++enum Cause {
++    Throttle,
++    Api,
++    Overload,
++}
++
++impl Cause {
++    const fn code(self) -> &'static str {
++        match self {
++            Self::Throttle => "ThrottlingException",
++            Self::Api => "InternalFailure",
++            Self::Overload => "ServiceUnavailableException",
++        }
++    }
++
++    const fn class(self) -> &'static str {
++        match self {
++            Self::Throttle => "rate_limit_error",
++            Self::Api => "api_error",
++            Self::Overload => "overloaded_error",
++        }
++    }
++}
++
++#[derive(Clone, Copy)]
++enum Fault {
++    Payload,
++    Crc,
++}
++
++fn upstream_frame(kind: Kind, cause: Cause) -> Vec<u8> {
++    let (message_type, code_header) = match kind {
++        Kind::Error => ("error", ":error-code"),
++        Kind::Exception => ("exception", ":exception-type"),
++    };
++    raw_frame(
++        &[
++            (":message-type", message_type),
++            (code_header, cause.code()),
++            (":content-type", "application/json"),
++        ],
++        PAYLOAD,
++    )
++}
++
++fn fault_frame(fault: Fault) -> Vec<u8> {
++    match fault {
++        Fault::Payload => frame("toolUseEvent", "{"),
++        Fault::Crc => bad_crc_frame(),
++    }
++}
++
++fn wire(kind: Kind, cause: Cause, fault: Fault) -> Bytes {
++    let mut wire = upstream_frame(kind, cause);
++    wire.extend(fault_frame(fault));
++    wire.extend(frame(
++        "assistantResponseEvent",
++        &format!(r#"{{"content":"{LATER}"}}"#),
++    ));
++    Bytes::from(wire)
++}
++
++fn assert_preserved(observed: &Observed, mode: Mode, cause: Cause) {
++    assert_eq!(observed.requests.len(), 1, "first errors must not retry");
++    assert!(!observed.body.contains(LATER), "{}", observed.body);
++    let error = match mode {
++        Mode::NonStream => {
++            let expected_status = match cause {
++                Cause::Throttle => StatusCode::TOO_MANY_REQUESTS,
++                Cause::Api | Cause::Overload => StatusCode::BAD_GATEWAY,
++            };
++            assert_eq!(observed.status, expected_status, "{}", observed.body);
++            let response: Value = serde_json::from_str(&observed.body).unwrap();
++            assert_eq!(
++                response.as_object().unwrap().keys().collect::<Vec<_>>(),
++                vec!["error"]
++            );
++            response["error"].clone()
++        }
++        Mode::Normal | Mode::Buffered => {
++            assert_eq!(observed.status, StatusCode::OK);
++            let events: Vec<Value> = observed
++                .body
++                .lines()
++                .filter_map(|line| line.strip_prefix("data: "))
++                .map(|data| serde_json::from_str(data).unwrap())
++                .collect();
++            assert_eq!(
++                events
++                    .iter()
++                    .filter(|event| event["type"] == "error")
++                    .count(),
++                1
++            );
++            assert!(
++                !events.iter().any(|event| {
++                    event["type"] == "message_delta"
++                        || event["type"] == "message_stop"
++                        || event["type"] == "content_block_delta"
++                }),
++                "{}",
++                observed.body
++            );
++            let terminal = events.last().unwrap();
++            assert_eq!(terminal["type"], "error");
++            terminal["error"].clone()
++        }
++    };
++    assert_eq!(error["type"], cause.class(), "{}", observed.body);
++    assert_eq!(
++        error["message"],
++        format!("{}: {PAYLOAD}", cause.code()),
++        "{}",
++        observed.body
++    );
++}
++
++macro_rules! http_cases {
++    ($kind:ident, $cause:ident; $($name:ident, $mode:ident, $fault:ident, $split:expr);* $(;)?) => {$ (
++        #[tokio::test]
++        async fn $name() {
++            let given = Script {
++                bodies: vec![wire(Kind::$kind, Cause::$cause, Fault::$fault)], keep_open: false,
++            };
++            let observed = fixture::run_chunks(given, Mode::$mode, $split).await;
++            assert_preserved(&observed, Mode::$mode, Cause::$cause);
++        }
++    )*};
++}
++
++macro_rules! cause_cases {
++    ($module:ident, $kind:ident, $cause:ident) => {
++        mod $module {
++            use super::*;
++
++            #[test]
++            fn fixture_parses_cause_when_frame_complete_or_byte_split() {
++                let given = upstream_frame(Kind::$kind, Cause::$cause);
++                let (parsed, consumed) = parse_frame(&given).unwrap().unwrap();
++                assert_eq!(consumed, given.len());
++                let observed = Event::from_frame(parsed).unwrap();
++                match observed {
++                    Event::Error {
++                        error_code,
++                        error_message,
++                    } => {
++                        assert!(matches!(Kind::$kind, Kind::Error));
++                        assert_eq!(error_code, Cause::$cause.code());
++                        assert_eq!(error_message, PAYLOAD);
++                    }
++                    Event::Exception {
++                        exception_type,
++                        message,
++                    } => {
++                        assert!(matches!(Kind::$kind, Kind::Exception));
++                        assert_eq!(exception_type, Cause::$cause.code());
++                        assert_eq!(message, PAYLOAD);
++                    }
++                    Event::AssistantResponse(_)
++                    | Event::ToolUse(_)
++                    | Event::Metering(_)
++                    | Event::Metadata(_)
++                    | Event::ContextUsage(_)
++                    | Event::ReasoningContent(_)
++                    | Event::Unknown {} => panic!("fixture must parse as Error/Exception"),
++                }
++                let mut decoder = EventStreamDecoder::new();
++                for byte in &given[..given.len() - 1] {
++                    decoder.feed(&[*byte]).unwrap();
++                    assert!(decoder.decode_iter().next().is_none());
++                }
++                decoder.feed(&given[given.len() - 1..]).unwrap();
++                let decoded = decoder
++                    .decode_iter()
++                    .collect::<Result<Vec<_>, _>>()
++                    .unwrap();
++                assert_eq!(decoded.len(), 1);
++                Event::from_frame(decoded.into_iter().next().unwrap()).unwrap();
++                decoder.finish().unwrap();
++            }
++
++            http_cases! {
++                $kind, $cause;
++                normal_preserves_when_payload_malformed, Normal, Payload, None;
++                buffered_preserves_when_payload_malformed, Buffered, Payload, None;
++                non_stream_preserves_when_payload_malformed, NonStream, Payload, None;
++                normal_preserves_when_crc_corrupt, Normal, Crc, None;
++                buffered_preserves_when_crc_corrupt, Buffered, Crc, None;
++                non_stream_preserves_when_crc_corrupt, NonStream, Crc, None;
++                normal_preserves_when_payload_byte_split, Normal, Payload, Some(1);
++                buffered_preserves_when_payload_byte_split, Buffered, Payload, Some(1);
++                non_stream_preserves_when_payload_byte_split, NonStream, Payload, Some(1);
++                normal_preserves_when_crc_byte_split, Normal, Crc, Some(1);
++                buffered_preserves_when_crc_byte_split, Buffered, Crc, Some(1);
++                non_stream_preserves_when_crc_byte_split, NonStream, Crc, Some(1);
++            }
++        }
++    };
++}
++
++cause_cases!(throttle_error, Error, Throttle);
++cause_cases!(throttle_exception, Exception, Throttle);
++cause_cases!(api_error, Error, Api);
++cause_cases!(overloaded_exception, Exception, Overload);
++
++#[test]
++fn fixture_has_semantic_error_when_recognized_payload_crc_valid() {
++    let given = fault_frame(Fault::Payload);
++    let (parsed, consumed) = parse_frame(&given).unwrap().unwrap();
++    assert_eq!(consumed, given.len());
++    assert_eq!(parsed.event_type(), Some("toolUseEvent"));
++    let observed = Event::from_frame(parsed);
++    assert!(matches!(observed, Err(ParseError::PayloadDeserialize(_))));
++}

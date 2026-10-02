@@ -1,0 +1,576 @@
+diff --git a/src/anthropic/handlers.rs b/src/anthropic/handlers.rs
+index 007dbce..c459971 100644
+--- a/src/anthropic/handlers.rs
++++ b/src/anthropic/handlers.rs
+@@ -470,6 +470,11 @@ pub async fn post_messages(
+         .as_ref()
+         .map(|t| t.is_enabled())
+         .unwrap_or(false);
++    let omit_thinking = payload
++        .thinking
++        .as_ref()
++        .map(|t| t.is_display_omitted())
++        .unwrap_or(false);
+ 
+     let tool_name_map = conversion_result.tool_name_map;
+ 
+@@ -481,13 +486,14 @@ pub async fn post_messages(
+             &payload.model,
+             input_tokens,
+             thinking_enabled,
++            omit_thinking,
+             tool_name_map,
+         )
+         .await
+     } else {
+         // 非流式响应：仅在配置开启时提取 thinking 块
+         let extract_thinking = state.extract_thinking && thinking_enabled;
+-        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map).await
++        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, omit_thinking, tool_name_map).await
+     }
+ }
+ 
+@@ -498,6 +504,7 @@ async fn handle_stream_request(
+     model: &str,
+     input_tokens: i32,
+     thinking_enabled: bool,
++    omit_thinking: bool,
+     tool_name_map: std::collections::HashMap<String, String>,
+ ) -> Response {
+     // 调用 Kiro API（支持多凭据故障转移）
+@@ -508,6 +515,7 @@ async fn handle_stream_request(
+ 
+     // 创建流处理上下文
+     let mut ctx = StreamContext::new_with_thinking(model, input_tokens, thinking_enabled, tool_name_map);
++    ctx.omit_thinking = omit_thinking;
+ 
+     // 生成初始事件
+     let initial_events = ctx.generate_initial_events();
+@@ -592,7 +600,7 @@ fn create_sse_stream(
+                         }
+                         Some(Err(e)) => {
+                             tracing::error!("读取响应流失败: {}", e);
+-                            // 发送最终事件并结束
++                            ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", e));
+                             let final_events = ctx.generate_final_events();
+                             let bytes: Vec<Result<Bytes, Infallible>> = final_events
+                                 .into_iter()
+@@ -634,6 +642,7 @@ async fn handle_non_stream_request(
+     model: &str,
+     input_tokens: i32,
+     thinking_enabled: bool,
++    omit_thinking: bool,
+     tool_name_map: std::collections::HashMap<String, String>,
+ ) -> Response {
+     // 调用 Kiro API（支持多凭据故障转移）
+@@ -673,6 +682,7 @@ async fn handle_non_stream_request(
+     let mut stop_reason = "end_turn".to_string();
+     // 从 contextUsageEvent 计算的实际输入 tokens
+     let mut context_input_tokens: Option<i32> = None;
++    let mut upstream_error: Option<(&'static str, String)> = None;
+ 
+     // 收集工具调用的增量 JSON
+     let mut tool_json_buffers: std::collections::HashMap<String, String> =
+@@ -747,9 +757,22 @@ async fn handle_non_stream_request(
+                                 actual_input_tokens
+                             );
+                         }
+-                        Event::Exception { exception_type, .. } => {
++                        Event::Exception { exception_type, message } => {
+                             if exception_type == "ContentLengthExceededException" {
+                                 stop_reason = "max_tokens".to_string();
++                            } else if upstream_error.is_none() {
++                                upstream_error = Some((
++                                    super::stream::upstream_error_type(&exception_type),
++                                    format!("{}: {}", exception_type, message),
++                                ));
++                            }
++                        }
++                        Event::Error { error_code, error_message } => {
++                            if upstream_error.is_none() {
++                                upstream_error = Some((
++                                    super::stream::upstream_error_type(&error_code),
++                                    format!("{}: {}", error_code, error_message),
++                                ));
+                             }
+                         }
+                         _ => {}
+@@ -762,6 +785,16 @@ async fn handle_non_stream_request(
+         }
+     }
+ 
++    if let Some((error_type, message)) = upstream_error {
++        tracing::warn!("上游返回错误事件: {}", message);
++        let status = if error_type == "rate_limit_error" {
++            StatusCode::TOO_MANY_REQUESTS
++        } else {
++            StatusCode::BAD_GATEWAY
++        };
++        return (status, Json(ErrorResponse::new(error_type, message))).into_response();
++    }
++
+     // 确定 stop_reason
+     if has_tool_use && stop_reason == "end_turn" {
+         stop_reason = "tool_use".to_string();
+@@ -789,7 +822,7 @@ async fn handle_non_stream_request(
+         if let Some(thinking_text) = final_thinking {
+             content.push(json!({
+                 "type": "thinking",
+-                "thinking": thinking_text,
++                "thinking": if omit_thinking { String::new() } else { thinking_text },
+                 "signature": reasoning_signature.clone().unwrap_or_default()
+             }));
+         }
+@@ -838,16 +871,57 @@ async fn handle_non_stream_request(
+ /// - Opus 4.6：覆写为 adaptive 类型
+ /// - 其他模型：覆写为 enabled 类型
+ /// - budget_tokens 固定为 20000
++/// Anthropic 仅支持 adaptive thinking 的世代（Opus 4.7+ / 5.x、Sonnet 5、Fable）
++fn is_adaptive_only_model(model_lower: &str) -> bool {
++    model_lower.contains("opus-4-7")
++        || model_lower.contains("opus-4.7")
++        || model_lower.contains("opus-4-8")
++        || model_lower.contains("opus-4.8")
++        || model_lower.contains("opus-5")
++        || model_lower.contains("sonnet-5")
++        || model_lower.contains("fable")
++}
++
++/// Anthropic 默认开启 thinking 的世代（Opus 5.x、Sonnet 5、Fable）：未传 thinking 时按 adaptive 处理
++fn is_default_thinking_model(model_lower: &str) -> bool {
++    model_lower.contains("opus-5") || model_lower.contains("sonnet-5") || model_lower.contains("fable")
++}
++
++fn apply_thinking_defaults(payload: &mut MessagesRequest) {
++    let model_lower = payload.model.to_lowercase();
++    if !is_adaptive_only_model(&model_lower) {
++        return;
++    }
++    let needs_adaptive = match &payload.thinking {
++        None => is_default_thinking_model(&model_lower),
++        Some(t) => t.thinking_type == "enabled",
++    };
++    if !needs_adaptive {
++        return;
++    }
++    let display = payload.thinking.as_ref().and_then(|t| t.display.clone());
++    payload.thinking = Some(Thinking {
++        thinking_type: "adaptive".to_string(),
++        budget_tokens: 20000,
++        display,
++    });
++    if payload.output_config.is_none() {
++        payload.output_config = Some(OutputConfig {
++            effort: "high".to_string(),
++        });
++    }
++}
++
+ fn override_thinking_from_model_name(payload: &mut MessagesRequest) {
+     let model_lower = payload.model.to_lowercase();
+     if !model_lower.contains("thinking") {
++        apply_thinking_defaults(payload);
+         return;
+     }
+ 
+     let is_adaptive_thinking = (model_lower.contains("opus")
+         && (model_lower.contains("4-6") || model_lower.contains("4.6")))
+-        || model_lower.contains("sonnet-5")
+-        || model_lower.contains("opus-5");
++        || is_adaptive_only_model(&model_lower);
+ 
+     let thinking_type = if is_adaptive_thinking {
+         "adaptive"
+@@ -861,12 +935,14 @@ fn override_thinking_from_model_name(payload: &mut MessagesRequest) {
+         "模型名包含 thinking 后缀，覆写 thinking 配置"
+     );
+ 
++    let display = payload.thinking.as_ref().and_then(|t| t.display.clone());
+     payload.thinking = Some(Thinking {
+         thinking_type: thinking_type.to_string(),
+         budget_tokens: 20000,
++        display,
+     });
+-    
+-    if is_adaptive_thinking {
++
++    if is_adaptive_thinking && payload.output_config.is_none() {
+         payload.output_config = Some(OutputConfig {
+             effort: "high".to_string(),
+         });
+@@ -1009,6 +1085,11 @@ pub async fn post_messages_cc(
+         .as_ref()
+         .map(|t| t.is_enabled())
+         .unwrap_or(false);
++    let omit_thinking = payload
++        .thinking
++        .as_ref()
++        .map(|t| t.is_display_omitted())
++        .unwrap_or(false);
+ 
+     let tool_name_map = conversion_result.tool_name_map;
+ 
+@@ -1020,13 +1101,14 @@ pub async fn post_messages_cc(
+             &payload.model,
+             input_tokens,
+             thinking_enabled,
++            omit_thinking,
+             tool_name_map,
+         )
+         .await
+     } else {
+         // 非流式响应：仅在配置开启时提取 thinking 块
+         let extract_thinking = state.extract_thinking && thinking_enabled;
+-        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, tool_name_map).await
++        handle_non_stream_request(provider, &request_body, &payload.model, input_tokens, extract_thinking, omit_thinking, tool_name_map).await
+     }
+ }
+ 
+@@ -1040,6 +1122,7 @@ async fn handle_stream_request_buffered(
+     model: &str,
+     estimated_input_tokens: i32,
+     thinking_enabled: bool,
++    omit_thinking: bool,
+     tool_name_map: std::collections::HashMap<String, String>,
+ ) -> Response {
+     // 调用 Kiro API（支持多凭据故障转移）
+@@ -1049,7 +1132,8 @@ async fn handle_stream_request_buffered(
+     };
+ 
+     // 创建缓冲流处理上下文
+-    let ctx = BufferedStreamContext::new(model, estimated_input_tokens, thinking_enabled, tool_name_map);
++    let mut ctx = BufferedStreamContext::new(model, estimated_input_tokens, thinking_enabled, tool_name_map);
++    ctx.set_omit_thinking(omit_thinking);
+ 
+     // 创建缓冲 SSE 流
+     let stream = create_buffered_sse_stream(response, ctx);
+@@ -1129,7 +1213,7 @@ fn create_buffered_sse_stream(
+                             }
+                             Some(Err(e)) => {
+                                 tracing::error!("读取响应流失败: {}", e);
+-                                // 发生错误，完成处理并返回所有事件
++                                ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", e));
+                                 let all_events = ctx.finish_and_get_all_events();
+                                 let bytes: Vec<Result<Bytes, Infallible>> = all_events
+                                     .into_iter()
+@@ -1154,3 +1238,60 @@ fn create_buffered_sse_stream(
+     )
+     .flatten()
+ }
++
++#[cfg(test)]
++mod thinking_policy_tests {
++    use super::*;
++
++    fn request(json: serde_json::Value) -> MessagesRequest {
++        serde_json::from_value(json).unwrap()
++    }
++
++    #[test]
++    fn default_thinking_models_become_adaptive_when_unset() {
++        let mut req = request(serde_json::json!({
++            "model": "claude-opus-5-5", "max_tokens": 16, "messages": []
++        }));
++        override_thinking_from_model_name(&mut req);
++        let thinking = req.thinking.expect("thinking should default on");
++        assert_eq!(thinking.thinking_type, "adaptive");
++        assert_eq!(req.output_config.unwrap().effort, "high");
++    }
++
++    #[test]
++    fn adaptive_only_models_map_enabled_and_keep_display_and_effort() {
++        let mut req = request(serde_json::json!({
++            "model": "claude-opus-4-7", "max_tokens": 16, "messages": [],
++            "thinking": {"type": "enabled", "budget_tokens": 4000, "display": "omitted"},
++            "output_config": {"effort": "low"}
++        }));
++        override_thinking_from_model_name(&mut req);
++        let thinking = req.thinking.unwrap();
++        assert_eq!(thinking.thinking_type, "adaptive");
++        assert!(thinking.is_display_omitted());
++        assert_eq!(req.output_config.unwrap().effort, "low");
++    }
++
++    #[test]
++    fn explicit_disabled_and_legacy_models_are_untouched() {
++        let mut disabled = request(serde_json::json!({
++            "model": "claude-sonnet-5", "max_tokens": 16, "messages": [],
++            "thinking": {"type": "disabled"}
++        }));
++        override_thinking_from_model_name(&mut disabled);
++        assert_eq!(disabled.thinking.unwrap().thinking_type, "disabled");
++
++        let mut legacy = request(serde_json::json!({
++            "model": "claude-opus-4-7", "max_tokens": 16, "messages": []
++        }));
++        override_thinking_from_model_name(&mut legacy);
++        assert!(legacy.thinking.is_none());
++
++        let mut sonnet45 = request(serde_json::json!({
++            "model": "claude-sonnet-4-5", "max_tokens": 16, "messages": [],
++            "thinking": {"type": "enabled", "budget_tokens": 4000}
++        }));
++        override_thinking_from_model_name(&mut sonnet45);
++        assert_eq!(sonnet45.thinking.unwrap().thinking_type, "enabled");
++    }
++}
+diff --git a/src/anthropic/stream.rs b/src/anthropic/stream.rs
+index 5a54a86..9535e87 100644
+--- a/src/anthropic/stream.rs
++++ b/src/anthropic/stream.rs
+@@ -454,14 +454,9 @@ impl SseStateManager {
+     }
+ 
+     /// 生成最终事件序列
+-    pub fn generate_final_events(
+-        &mut self,
+-        input_tokens: i32,
+-        output_tokens: i32,
+-    ) -> Vec<SseEvent> {
++    /// 关闭所有未关闭的块
++    pub fn close_open_blocks(&mut self) -> Vec<SseEvent> {
+         let mut events = Vec::new();
+-
+-        // 关闭所有未关闭的块
+         for (index, block) in self.active_blocks.iter_mut() {
+             if block.started && !block.stopped {
+                 events.push(SseEvent::new(
+@@ -474,6 +469,15 @@ impl SseStateManager {
+                 block.stopped = true;
+             }
+         }
++        events
++    }
++
++    pub fn generate_final_events(
++        &mut self,
++        input_tokens: i32,
++        output_tokens: i32,
++    ) -> Vec<SseEvent> {
++        let mut events = self.close_open_blocks();
+ 
+         // 发送 message_delta
+         if !self.message_delta_sent {
+@@ -548,6 +552,10 @@ pub struct StreamContext {
+     /// 是否需要剥离 thinking 内容开头的换行符
+     /// 模型输出 `<thinking>\n` 时，`\n` 可能与标签在同一 chunk 或下一 chunk
+     strip_thinking_leading_newline: bool,
++    /// `thinking.display = "omitted"`：thinking 块保留结构与 signature，但不下发文本
++    pub omit_thinking: bool,
++    /// 上游中途错误 (error_type, message)；存在时流以 Anthropic `error` 事件结束
++    pub upstream_error: Option<(String, String)>,
+ }
+ 
+ impl StreamContext {
+@@ -576,6 +584,14 @@ impl StreamContext {
+             pending_reasoning_signature: None,
+             text_block_index: None,
+             strip_thinking_leading_newline: false,
++            omit_thinking: false,
++            upstream_error: None,
++        }
++    }
++
++    pub fn mark_stream_error(&mut self, error_type: &str, message: impl Into<String>) {
++        if self.upstream_error.is_none() {
++            self.upstream_error = Some((error_type.to_string(), message.into()));
+         }
+     }
+ 
+@@ -677,6 +693,10 @@ impl StreamContext {
+                 error_message,
+             } => {
+                 tracing::error!("收到错误事件: {} - {}", error_code, error_message);
++                self.mark_stream_error(
++                    upstream_error_type(error_code),
++                    format!("{}: {}", error_code, error_message),
++                );
+                 Vec::new()
+             }
+             Event::Exception {
+@@ -686,6 +706,11 @@ impl StreamContext {
+                 // 处理 ContentLengthExceededException
+                 if exception_type == "ContentLengthExceededException" {
+                     self.state_manager.set_stop_reason("max_tokens");
++                } else {
++                    self.mark_stream_error(
++                        upstream_error_type(exception_type),
++                        format!("{}: {}", exception_type, message),
++                    );
+                 }
+                 tracing::warn!("收到异常事件: {} - {}", exception_type, message);
+                 Vec::new()
+@@ -735,7 +760,10 @@ impl StreamContext {
+                 json!({
+                     "type": "content_block_delta",
+                     "index": index,
+-                    "delta": { "type": "thinking_delta", "thinking": reasoning.text }
++                    "delta": {
++                        "type": "thinking_delta",
++                        "thinking": if self.omit_thinking { "" } else { reasoning.text.as_str() }
++                    }
+                 }),
+             ) {
+                 events.push(delta_event);
+@@ -1031,7 +1059,7 @@ impl StreamContext {
+                 "index": index,
+                 "delta": {
+                     "type": "thinking_delta",
+-                    "thinking": thinking
++                    "thinking": if self.omit_thinking { "" } else { thinking }
+                 }
+             }),
+         )
+@@ -1235,6 +1263,12 @@ impl StreamContext {
+             self.thinking_buffer.clear();
+         }
+ 
++        if let Some((error_type, message)) = self.upstream_error.clone() {
++            events.extend(self.state_manager.close_open_blocks());
++            events.push(create_error_event(&error_type, &message));
++            return events;
++        }
++
+         // 如果整个流中只产生了 thinking 块，没有 text 也没有 tool_use，
+         // 则设置 stop_reason 为 max_tokens（表示模型耗尽了 token 预算在思考上），
+         // 并补发一套完整的 text 事件（内容为一个空格），确保 content 数组中有 text 块
+@@ -1258,6 +1292,29 @@ impl StreamContext {
+     }
+ }
+ 
++/// 上游错误码 → Anthropic error.type（限流类映射为 rate_limit_error 便于客户端退避重试）
++pub fn upstream_error_type(code: &str) -> &'static str {
++    let lower = code.to_lowercase();
++    if lower.contains("throttl") || lower.contains("toomanyrequests") || lower.contains("quota") {
++        "rate_limit_error"
++    } else if lower.contains("overloaded") || lower.contains("serviceunavailable") || lower.contains("capacity") {
++        "overloaded_error"
++    } else {
++        "api_error"
++    }
++}
++
++/// Anthropic 流式中途错误事件：`event: error`
++pub fn create_error_event(error_type: &str, message: &str) -> SseEvent {
++    SseEvent::new(
++        "error",
++        json!({
++            "type": "error",
++            "error": { "type": error_type, "message": message }
++        }),
++    )
++}
++
+ /// 缓冲流处理上下文 - 用于 /cc/v1/messages 流式请求
+ ///
+ /// 与 `StreamContext` 不同，此上下文会缓冲所有事件直到流结束，
+@@ -1313,6 +1370,14 @@ impl BufferedStreamContext {
+         self.event_buffer.extend(events);
+     }
+ 
++    pub fn mark_stream_error(&mut self, error_type: &str, message: impl Into<String>) {
++        self.inner.mark_stream_error(error_type, message);
++    }
++
++    pub fn set_omit_thinking(&mut self, omit: bool) {
++        self.inner.omit_thinking = omit;
++    }
++
+     /// 完成流处理并返回所有事件
+     ///
+     /// 此方法会：
+@@ -1380,6 +1445,69 @@ mod tests {
+     /// reasoning-only 流（只有 reasoningContentEvent，没有后续 text/tool_use）
+     /// 必须保留 thinking-only 终止语义：stop_reason=max_tokens + 补一个 text block。
+     /// close_reasoning_if_open() 会清 thinking_block_index，回归此前用 had_thinking_block 兜住。
++    #[test]
++    fn test_upstream_error_event_ends_stream_with_error() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, false, HashMap::new());
++        let _initial_events = ctx.generate_initial_events();
++
++        let mut all_events = ctx.process_assistant_response("partial");
++        all_events.extend(ctx.process_kiro_event(&crate::kiro::model::events::Event::Exception {
++            exception_type: "ThrottlingException".to_string(),
++            message: "slow down".to_string(),
++        }));
++        all_events.extend(ctx.generate_final_events());
++
++        assert!(all_events.iter().any(|e| e.event == "content_block_stop"));
++        assert!(!all_events.iter().any(|e| e.event == "message_delta" || e.event == "message_stop"));
++        let error = all_events.last().expect("should end with error event");
++        assert_eq!(error.event, "error");
++        assert_eq!(error.data["error"]["type"], "rate_limit_error");
++    }
++
++    #[test]
++    fn test_content_length_exception_keeps_max_tokens() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, false, HashMap::new());
++        let _initial_events = ctx.generate_initial_events();
++
++        let mut all_events = ctx.process_assistant_response("partial");
++        all_events.extend(ctx.process_kiro_event(&crate::kiro::model::events::Event::Exception {
++            exception_type: "ContentLengthExceededException".to_string(),
++            message: "too long".to_string(),
++        }));
++        all_events.extend(ctx.generate_final_events());
++
++        let message_delta = all_events
++            .iter()
++            .find(|e| e.event == "message_delta")
++            .expect("should have message_delta event");
++        assert_eq!(message_delta.data["delta"]["stop_reason"], "max_tokens");
++        assert!(!all_events.iter().any(|e| e.event == "error"));
++    }
++
++    #[test]
++    fn test_display_omitted_keeps_block_and_signature_without_text() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        ctx.omit_thinking = true;
++        let _initial_events = ctx.generate_initial_events();
++
++        let mut all_events = ctx.process_reasoning_content(
++            &crate::kiro::model::events::ReasoningContentEvent {
++                text: "secret reasoning".to_string(),
++                signature: Some("sig".to_string()),
++                redacted_content: None,
++            },
++        );
++        all_events.extend(ctx.process_assistant_response("answer"));
++        all_events.extend(ctx.generate_final_events());
++
++        assert!(all_events.iter().any(|e| {
++            e.event == "content_block_start" && e.data["content_block"]["type"] == "thinking"
++        }));
++        assert!(all_events.iter().any(|e| e.data["delta"]["type"] == "signature_delta"
++            && e.data["delta"]["signature"] == "sig"));
++        assert!(!all_events.iter().any(|e| e.data["delta"]["thinking"] == "secret reasoning"));
++    }
++
+     #[test]
+     fn test_reasoning_only_sets_max_tokens_stop_reason() {
+         let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
+diff --git a/src/anthropic/types.rs b/src/anthropic/types.rs
+index 0fae4a6..551d871 100644
+--- a/src/anthropic/types.rs
++++ b/src/anthropic/types.rs
+@@ -73,6 +73,9 @@ pub struct Thinking {
+         deserialize_with = "deserialize_budget_tokens"
+     )]
+     pub budget_tokens: i32,
++    /// Anthropic `thinking.display`：`summarized`（默认）或 `omitted`
++    #[serde(default)]
++    pub display: Option<String>,
+ }
+ 
+ impl Thinking {
+@@ -80,6 +83,10 @@ impl Thinking {
+     pub fn is_enabled(&self) -> bool {
+         self.thinking_type == "enabled" || self.thinking_type == "adaptive"
+     }
++
++    pub fn is_display_omitted(&self) -> bool {
++        self.display.as_deref() == Some("omitted")
++    }
+ }
+ 
+ fn default_budget_tokens() -> i32 {

@@ -1,0 +1,1248 @@
+diff --git a/src/anthropic/converter.rs b/src/anthropic/converter.rs
+index b588691..b14c58a 100644
+--- a/src/anthropic/converter.rs
++++ b/src/anthropic/converter.rs
+@@ -11,7 +11,9 @@ use crate::kiro::model::requests::conversation::{
+     AssistantMessage, ConversationState, CurrentMessage, HistoryAssistantMessage,
+     HistoryUserMessage, KiroImage, Message, UserInputMessage, UserInputMessageContext, UserMessage,
+ };
+-use crate::kiro::model::requests::kiro::{AdditionalModelRequestFields, KiroOutputConfig};
++use crate::kiro::model::requests::kiro::{
++    AdditionalModelRequestFields, InferenceConfig, KiroOutputConfig, KiroReasoningConfig,
++};
+ use crate::kiro::model::requests::tool::{
+     InputSchema, Tool, ToolResult, ToolSpecification, ToolUseEntry,
+ };
+@@ -63,6 +65,13 @@ fn normalize_json_schema(schema: serde_json::Value) -> serde_json::Value {
+     serde_json::Value::Object(obj)
+ }
+ 
++/// Kiro 上游会把整段工具输入缓存到生成完毕才下发，其间连接静默；
++/// 静默约 240 秒即被上游断开（实测 1000 行 188s 成功、2000 行 240s 断开）。
++/// 以下后缀约束单次工具输入规模，适配 Claude Code 的 Bash 与 opencode 的 write/edit/bash。
++const BASH_TOOL_DESCRIPTION_SUFFIX: &str = "- IMPORTANT: Do not send very large commands, inline scripts, or heredocs. If a command would exceed 100 lines or ~8000 characters, first create the script file with chunked write/edit calls, then run a short command that executes it.";
++const OPENCODE_WRITE_TOOL_DESCRIPTION_SUFFIX: &str = "- IMPORTANT: Each call must stay under 300 lines (~15000 characters) of content. For larger files, write the first 300 lines ending with a unique placeholder line, then use the edit tool to replace that placeholder with the next chunk (plus a new placeholder), repeating until done; the final chunk removes the placeholder. Do not attempt to write everything at once.";
++const OPENCODE_EDIT_TOOL_DESCRIPTION_SUFFIX: &str = "- IMPORTANT: Keep each `newString` under 300 lines (~15000 characters). Split larger changes into multiple edit calls; when appending, keep a unique placeholder line and replace it chunk by chunk.";
++
+ /// 追加到 Write 工具 description 末尾的内容
+ const WRITE_TOOL_DESCRIPTION_SUFFIX: &str = "- IMPORTANT: If the content to write exceeds 150 lines, you MUST only write the first 50 lines using this tool, then use `Edit` tool to append the remaining content in chunks of no more than 50 lines each. If needed, leave a unique placeholder to help append content. Do NOT attempt to write all content at once.";
+ 
+@@ -194,9 +203,10 @@ pub struct ConversionResult {
+     pub conversation_state: ConversationState,
+     /// 工具名称映射（短名称 → 原始名称），仅当存在超长工具名时非空
+     pub tool_name_map: HashMap<String, String>,
+-    /// Additional model request fields (including `output_config.effort`), translated from the
+-    /// `output_config` field of the client's Anthropic request. Not sent when empty.
++    /// 由客户端 output_config / thinking 推导并按模型门控的 effort 字段；不支持的模型为 None
+     pub additional_model_request_fields: Option<AdditionalModelRequestFields>,
++    /// 顶层 inferenceConfig（maxTokens / temperature / topP），仅 Claude 系列
++    pub inference_config: Option<InferenceConfig>,
+ }
+ 
+ /// 转换错误
+@@ -400,26 +410,189 @@ pub fn convert_request(req: &MessagesRequest) -> Result<ConversionResult, Conver
+         );
+     }
+ 
+-    // 14. Extract effort into AdditionalModelRequestFields (a real Kiro CLI wire field)
+-    //
+-    // The AWS Q backend's real protocol uses `additionalModelRequestFields.output_config.effort`,
+-    // which is not the same thing as stuffing a `<thinking_effort>` XML tag into the system prompt.
+-    // The client-supplied `req.output_config.effort` is translated here into the real protocol field,
+-    // while the existing XML prefix logic (generate_thinking_prefix) is left unchanged,
+-    // so sending both yields the strongest effect (measured to roughly 4x the thinking depth of sending only one).
+-    // The effort value is passed through verbatim: whatever tier the client sends is translated into the protocol field, with no literal substitution.
+-    let additional_model_request_fields = req.output_config.as_ref().map(|oc| {
+-        AdditionalModelRequestFields {
+-            output_config: Some(KiroOutputConfig {
+-                effort: oc.effort.clone(),
+-            }),
+-        }
+-    });
++    // 14. effort → additionalModelRequestFields（Kiro CLI 真实协议字段），与 <thinking_effort>
++    // 提示词前缀（generate_thinking_prefix）同时下发。按模型门控：上游 schema 不支持的模型
++    // 不发送；未显式指定时由 thinking 配置推导；xhigh 在不支持的模型上降为 high，未知值归一为
++    // high；GPT-5.6 走 reasoning.effort。另构建顶层 inferenceConfig。
++    let additional_model_request_fields = build_additional_model_request_fields(req, &model_id);
++    let inference_config = build_inference_config(req, &model_id);
+ 
+     Ok(ConversionResult {
+         conversation_state,
+         tool_name_map,
+         additional_model_request_fields,
++        inference_config,
++    })
++}
++
++fn is_gpt_reasoning_model(model_id: &str) -> bool {
++    model_id.starts_with("gpt-5.6")
++}
++
++/// 上游 additionalModelRequestFields schema 只对这些模型开放 effort；
++/// sonnet/haiku/opus 4.5 与开放权重模型发送该字段会 400。
++fn supports_claude_effort(model_id: &str) -> bool {
++    matches!(
++        model_id,
++        "claude-opus-4.6" | "claude-opus-4.7" | "claude-opus-4.8" | "claude-sonnet-4.6"
++    ) || model_id.starts_with("claude-opus-5")
++        || model_id.starts_with("claude-sonnet-5")
++        || model_id.starts_with("claude-fable-")
++}
++
++fn supports_xhigh_effort(model_id: &str) -> bool {
++    matches!(model_id, "claude-opus-4.7" | "claude-opus-4.8")
++        || model_id.starts_with("claude-opus-5")
++        || model_id.starts_with("claude-sonnet-5")
++        || model_id.starts_with("claude-fable-")
++}
++
++fn effort_from_budget(budget_tokens: i32) -> &'static str {
++    match budget_tokens {
++        i32::MIN..=4_000 => "low",
++        4_001..=16_000 => "medium",
++        _ => "high",
++    }
++}
++
++fn build_additional_model_request_fields(
++    req: &MessagesRequest,
++    model_id: &str,
++) -> Option<AdditionalModelRequestFields> {
++    if req.thinking.as_ref().is_some_and(|t| t.thinking_type == "disabled") {
++        return None;
++    }
++    let explicit = req
++        .output_config
++        .as_ref()
++        .map(|oc| oc.effort.trim().to_ascii_lowercase())
++        .filter(|e| !e.is_empty());
++    let thinking = req.thinking.as_ref().filter(|t| t.is_enabled());
++
++    if is_gpt_reasoning_model(model_id) {
++        let effort = explicit.or_else(|| thinking.map(|_| "high".to_string()))?;
++        let effort = match effort.as_str() {
++            "max" => "xhigh".to_string(),
++            "low" | "medium" | "high" | "xhigh" => effort,
++            _ => "high".to_string(),
++        };
++        return Some(AdditionalModelRequestFields {
++            output_config: None,
++            reasoning: Some(KiroReasoningConfig { effort }),
++        });
++    }
++
++    if !supports_claude_effort(model_id) {
++        return None;
++    }
++    // Opus 4.6 仅在 adaptive thinking 下接受 output_config（enabled 或纯 effort 会 400）
++    if model_id == "claude-opus-4.6" && !thinking.is_some_and(|t| t.thinking_type == "adaptive") {
++        return None;
++    }
++    let effort = explicit.or_else(|| {
++        thinking.map(|t| {
++            if t.thinking_type == "enabled" {
++                effort_from_budget(t.budget_tokens).to_string()
++            } else {
++                "high".to_string()
++            }
++        })
++    })?;
++    let effort = match effort.as_str() {
++        "xhigh" if !supports_xhigh_effort(model_id) => "high".to_string(),
++        "low" | "medium" | "high" | "xhigh" | "max" => effort,
++        _ => "high".to_string(),
++    };
++    Some(AdditionalModelRequestFields {
++        output_config: Some(KiroOutputConfig { effort }),
++        reasoning: None,
++    })
++}
++
++fn max_output_tokens_cap(model_id: &str) -> i32 {
++    if matches!(model_id, "claude-opus-4.6" | "claude-opus-4.7" | "claude-opus-4.8")
++        || model_id.starts_with("claude-opus-5")
++        || model_id.starts_with("claude-sonnet-5")
++        || model_id.starts_with("claude-fable-")
++    {
++        128_000
++    } else {
++        64_000
++    }
++}
++
++/// Kiro 顶层 inferenceConfig（仅 Claude 系列）。thinking 生效或 adaptive-only 世代时
++/// 丢弃 temperature/topP：Anthropic 在这些情况下拒绝非默认采样参数（OmniRoute 报告 Kiro
++/// 上游同样 400）；本项目选择静默丢弃而非报错。
++///
++/// FIXME(max_tokens): 上游接受 maxTokens 但不遵守——实测 max_tokens=30 时 opus-5-5 与
++/// sonnet-4.5 仍输出约 340 token 且 stop_reason=end_turn。字段保留以便上游日后生效。
++fn build_inference_config(req: &MessagesRequest, model_id: &str) -> Option<InferenceConfig> {
++    if !model_id.starts_with("claude-") {
++        return None;
++    }
++    let max_tokens = Some(req.max_tokens.clamp(1, max_output_tokens_cap(model_id)));
++    let thinking_active = req.thinking.as_ref().is_some_and(|t| t.is_enabled());
++    let adaptive_only = matches!(model_id, "claude-opus-4.7" | "claude-opus-4.8")
++        || model_id.starts_with("claude-opus-5")
++        || model_id.starts_with("claude-sonnet-5")
++        || model_id.starts_with("claude-fable-");
++    let sampling_allowed = !thinking_active && !adaptive_only;
++    Some(InferenceConfig {
++        max_tokens,
++        temperature: req.temperature.filter(|_| sampling_allowed),
++        top_p: req.top_p.filter(|_| sampling_allowed),
++    })
++}
++
++/// Opus 4.5 与 4.6+ 世代跨回合保留历史 thinking；Sonnet/Haiku 4.5 及更早世代
++/// 只保留当前工具循环（最后一条真实 user 消息之后）的 thinking。
++fn model_preserves_prior_thinking(model_id: &str) -> bool {
++    !matches!(model_id, "claude-sonnet-4.5" | "claude-haiku-4.5" | "claude-sonnet-4.0")
++}
++
++fn is_real_user_turn(msg: &super::types::Message) -> bool {
++    match &msg.content {
++        serde_json::Value::Array(arr) => arr
++            .iter()
++            .any(|b| b.get("type").and_then(|t| t.as_str()) != Some("tool_result")),
++        _ => true,
++    }
++}
++
++fn strip_prior_turn_thinking(messages: &[super::types::Message]) -> Vec<super::types::Message> {
++    let boundary = messages
++        .iter()
++        .rposition(|m| m.role == "user" && is_real_user_turn(m))
++        .unwrap_or(0);
++    messages
++        .iter()
++        .enumerate()
++        .map(|(i, m)| {
++            let mut m = m.clone();
++            if i < boundary && m.role == "assistant" {
++                if let serde_json::Value::Array(arr) = &mut m.content {
++                    arr.retain(|b| {
++                        !matches!(
++                            b.get("type").and_then(|t| t.as_str()),
++                            Some("thinking") | Some("redacted_thinking")
++                        )
++                    });
++                    if arr.is_empty() {
++                        arr.push(serde_json::json!({"type": "text", "text": " "}));
++                    }
++                }
++            }
++            m
++        })
++        .collect()
++}
++
++fn has_chunked_write_tools(req: &MessagesRequest) -> bool {
++    req.tools.as_ref().is_some_and(|tools| {
++        tools
++            .iter()
++            .any(|t| matches!(t.name.as_str(), "Write" | "Edit" | "write" | "edit"))
+     })
+ }
+ 
+@@ -704,25 +877,27 @@ fn convert_tools(tools: &Option<Vec<super::types::Tool>>, tool_name_map: &mut Ha
+     tools
+         .iter()
+         .map(|t| {
+-            let mut description = t.description.clone();
+-
+-            // 对 Write/Edit 工具追加自定义描述后缀
++            // Claude Code（Write/Edit/Bash）与 opencode（write/edit/bash）的分块约束后缀
+             let suffix = match t.name.as_str() {
+                 "Write" => WRITE_TOOL_DESCRIPTION_SUFFIX,
+                 "Edit" => EDIT_TOOL_DESCRIPTION_SUFFIX,
++                "write" => OPENCODE_WRITE_TOOL_DESCRIPTION_SUFFIX,
++                "edit" => OPENCODE_EDIT_TOOL_DESCRIPTION_SUFFIX,
++                "Bash" | "bash" => BASH_TOOL_DESCRIPTION_SUFFIX,
+                 _ => "",
+             };
++
++            // 限制描述长度为 10000 字符（安全截断 UTF-8），先截断原描述再追加后缀，保证后缀不被截掉
++            let budget = 10000usize.saturating_sub(if suffix.is_empty() { 0 } else { suffix.chars().count() + 1 });
++            let mut description = match t.description.char_indices().nth(budget) {
++                Some((idx, _)) => t.description[..idx].to_string(),
++                None => t.description.clone(),
++            };
+             if !suffix.is_empty() {
+                 description.push('\n');
+                 description.push_str(suffix);
+             }
+ 
+-            // 限制描述长度为 10000 字符（安全截断 UTF-8，单次遍历）
+-            let description = match description.char_indices().nth(10000) {
+-                Some((idx, _)) => description[..idx].to_string(),
+-                None => description,
+-            };
+-
+             Tool {
+                 tool_specification: ToolSpecification {
+                     name: map_tool_name(&t.name, tool_name_map),
+@@ -786,7 +961,11 @@ fn build_history(req: &MessagesRequest, messages: &[super::types::Message], mode
+ 
+         if !system_content.is_empty() {
+             // 追加分块写入策略到系统消息
+-            let system_content = format!("{}\n{}", system_content, SYSTEM_CHUNKED_POLICY);
++            let system_content = if has_chunked_write_tools(req) {
++                format!("{}\n{}", system_content, SYSTEM_CHUNKED_POLICY)
++            } else {
++                system_content
++            };
+ 
+             // 注入thinking标签到系统消息最前面（如果需要且不存在）
+             let final_content = if let Some(ref prefix) = thinking_prefix {
+@@ -818,6 +997,13 @@ fn build_history(req: &MessagesRequest, messages: &[super::types::Message], mode
+     // 2. 处理常规消息历史
+     // 最后一条消息作为 currentMessage，不加入历史
+     // 经过 prefill 预处理后，messages 末尾必定是 user，故直接截掉最后一条即可
++    let stripped;
++    let messages: &[super::types::Message] = if model_preserves_prior_thinking(model_id) {
++        messages
++    } else {
++        stripped = strip_prior_turn_thinking(messages);
++        &stripped
++    };
+     let history_end_index = messages.len().saturating_sub(1);
+ 
+     // 收集并配对消息
+@@ -1166,6 +1352,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+         assert_eq!(determine_chat_trigger_type(&req), "MANUAL");
+     }
+@@ -1281,6 +1469,8 @@ mod tests {
+             tool_choice: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req).unwrap();
+@@ -1344,6 +1534,8 @@ mod tests {
+             tool_choice: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req).unwrap();
+@@ -1401,6 +1593,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req).unwrap();
+@@ -1489,6 +1683,8 @@ mod tests {
+                     "user_0dede55c6dcc4a11a30bbb5e7f22e6fdf86cdeba3820019cc27612af4e1243cd_account__session_a0662283-7fd3-4399-a7eb-52b9a717ae88".to_string(),
+                 ),
+             }),
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req).unwrap();
+@@ -1517,6 +1713,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req).unwrap();
+@@ -1947,6 +2145,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let result = convert_request(&req);
+@@ -1967,3 +2167,194 @@ mod tests {
+         assert!(found_tool_use, "合并后的 assistant 消息应包含 tool_use");
+     }
+ }
++
++#[cfg(test)]
++mod protocol_tests {
++    use super::*;
++
++    fn req(json: serde_json::Value) -> MessagesRequest {
++        serde_json::from_value(json).unwrap()
++    }
++
++    fn effort_of(r: &ConversionResult) -> Option<String> {
++        r.additional_model_request_fields
++            .as_ref()
++            .and_then(|f| f.output_config.as_ref())
++            .map(|o| o.effort.clone())
++    }
++
++    #[test]
++    fn effort_field_is_gated_by_model() {
++        let legacy = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-5-20250929", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "output_config": {"effort": "high"}
++        }))).unwrap();
++        assert!(legacy.additional_model_request_fields.is_none());
++
++        let opus46_enabled = convert_request(&req(serde_json::json!({
++            "model": "claude-opus-4-6", "max_tokens": 4096,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "enabled", "budget_tokens": 2000},
++            "output_config": {"effort": "low"}
++        }))).unwrap();
++        assert!(opus46_enabled.additional_model_request_fields.is_none());
++
++        let opus46_adaptive = convert_request(&req(serde_json::json!({
++            "model": "claude-opus-4-6", "max_tokens": 4096,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "adaptive"}
++        }))).unwrap();
++        assert_eq!(effort_of(&opus46_adaptive).as_deref(), Some("high"));
++
++        let sonnet46_budget = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-6", "max_tokens": 16000,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "enabled", "budget_tokens": 3000}
++        }))).unwrap();
++        assert_eq!(effort_of(&sonnet46_budget).as_deref(), Some("low"));
++
++        let xhigh_downgrade = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-6", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "output_config": {"effort": "xhigh"}
++        }))).unwrap();
++        assert_eq!(effort_of(&xhigh_downgrade).as_deref(), Some("high"));
++
++        let opus55_max = convert_request(&req(serde_json::json!({
++            "model": "claude-opus-5-5", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "adaptive"}, "output_config": {"effort": "max"}
++        }))).unwrap();
++        assert_eq!(effort_of(&opus55_max).as_deref(), Some("max"));
++
++        let disabled = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-6", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "disabled"}, "output_config": {"effort": "high"}
++        }))).unwrap();
++        assert!(disabled.additional_model_request_fields.is_none());
++    }
++
++    #[test]
++    fn gpt_models_use_reasoning_effort() {
++        let r = convert_request(&req(serde_json::json!({
++            "model": "gpt-5.6-sol", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "output_config": {"effort": "max"}
++        }))).unwrap();
++        let f = r.additional_model_request_fields.unwrap();
++        assert!(f.output_config.is_none());
++        assert_eq!(f.reasoning.unwrap().effort, "xhigh");
++        assert!(r.inference_config.is_none());
++    }
++
++    #[test]
++    fn inference_config_caps_tokens_and_drops_sampling_when_thinking() {
++        let plain = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-5-20250929", "max_tokens": 999999,
++            "messages": [{"role": "user", "content": "hi"}],
++            "temperature": 0.2, "top_p": 0.9
++        }))).unwrap();
++        let ic = plain.inference_config.unwrap();
++        assert_eq!(ic.max_tokens, Some(64_000));
++        assert_eq!(ic.temperature, Some(0.2));
++        assert_eq!(ic.top_p, Some(0.9));
++
++        let thinking = convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-5-20250929", "max_tokens": 8000,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "enabled", "budget_tokens": 2000}, "temperature": 0.2
++        }))).unwrap();
++        let ic = thinking.inference_config.unwrap();
++        assert_eq!(ic.max_tokens, Some(8000));
++        assert_eq!(ic.temperature, None);
++
++        let adaptive_only = convert_request(&req(serde_json::json!({
++            "model": "claude-opus-5-5", "max_tokens": 200000,
++            "messages": [{"role": "user", "content": "hi"}],
++            "thinking": {"type": "disabled"}, "temperature": 0.5
++        }))).unwrap();
++        let ic = adaptive_only.inference_config.unwrap();
++        assert_eq!(ic.max_tokens, Some(128_000));
++        assert_eq!(ic.temperature, None);
++
++        let serialized = serde_json::to_value(&ic).unwrap();
++        assert_eq!(serialized, serde_json::json!({"maxTokens": 128000}));
++    }
++
++    fn assistant_contents(r: &ConversionResult) -> Vec<String> {
++        r.conversation_state
++            .history
++            .iter()
++            .filter_map(|m| match m {
++                Message::Assistant(a) => Some(a.assistant_response_message.content.clone()),
++                _ => None,
++            })
++            .collect()
++    }
++
++    #[test]
++    fn legacy_models_strip_prior_turn_thinking_only() {
++        let body = |model: &str| serde_json::json!({
++            "model": model, "max_tokens": 4096,
++            "messages": [
++                {"role": "user", "content": "first question"},
++                {"role": "assistant", "content": [
++                    {"type": "thinking", "thinking": "OLD-REASONING", "signature": ""},
++                    {"type": "text", "text": "first answer"}]},
++                {"role": "user", "content": "second question"},
++                {"role": "assistant", "content": [
++                    {"type": "thinking", "thinking": "LOOP-REASONING", "signature": ""},
++                    {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}]},
++                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "data"}]}
++            ],
++            "tools": [{"name": "read", "description": "read", "input_schema": {"type": "object"}}]
++        });
++        let legacy = assistant_contents(&convert_request(&req(body("claude-sonnet-4-5-20250929"))).unwrap()).join("|");
++        assert!(!legacy.contains("OLD-REASONING"));
++        assert!(legacy.contains("LOOP-REASONING"));
++
++        let modern = assistant_contents(&convert_request(&req(body("claude-opus-4-6"))).unwrap()).join("|");
++        assert!(modern.contains("OLD-REASONING"));
++        assert!(modern.contains("LOOP-REASONING"));
++    }
++
++    #[test]
++    fn chunked_policy_only_injected_for_write_edit_tools() {
++        let with_tools = |name: &str| convert_request(&req(serde_json::json!({
++            "model": "claude-sonnet-4-6", "max_tokens": 1024,
++            "system": "You are helpful.",
++            "messages": [{"role": "user", "content": "hi"}],
++            "tools": [{"name": name, "description": "d", "input_schema": {"type": "object"}}]
++        }))).unwrap();
++        let first_user = |r: &ConversionResult| match &r.conversation_state.history[0] {
++            Message::User(u) => u.user_input_message.content.clone(),
++            _ => String::new(),
++        };
++        assert!(first_user(&with_tools("Write")).contains("comply silently"));
++        assert!(first_user(&with_tools("write")).contains("comply silently"));
++        assert!(!first_user(&with_tools("read")).contains("comply silently"));
++    }
++
++    #[test]
++    fn opencode_tools_get_chunking_suffix_that_survives_truncation() {
++        let long_desc = "x".repeat(12000);
++        let r = convert_request(&req(serde_json::json!({
++            "model": "claude-opus-5-5", "max_tokens": 1024,
++            "messages": [{"role": "user", "content": "hi"}],
++            "tools": [
++                {"name": "write", "description": long_desc, "input_schema": {"type": "object"}},
++                {"name": "bash", "description": "run", "input_schema": {"type": "object"}},
++                {"name": "read", "description": "read", "input_schema": {"type": "object"}}
++            ]
++        }))).unwrap();
++        let tools = &r.conversation_state.current_message.user_input_message.user_input_message_context.tools;
++        let desc = |name: &str| tools.iter().find(|t| t.tool_specification.name == name).unwrap().tool_specification.description.clone();
++        let write = desc("write");
++        assert!(write.chars().count() <= 10000);
++        assert!(write.ends_with(OPENCODE_WRITE_TOOL_DESCRIPTION_SUFFIX));
++        assert!(desc("bash").ends_with(BASH_TOOL_DESCRIPTION_SUFFIX));
++        assert_eq!(desc("read"), "read");
++    }
++}
+diff --git a/src/anthropic/handlers.rs b/src/anthropic/handlers.rs
+index c459971..c85e558 100644
+--- a/src/anthropic/handlers.rs
++++ b/src/anthropic/handlers.rs
+@@ -27,6 +27,21 @@ use super::stream::{BufferedStreamContext, SseEvent, StreamContext};
+ use super::types::{CountTokensRequest, CountTokensResponse, ErrorResponse, MessagesRequest, Model, ModelsResponse, OutputConfig, Thinking};
+ use super::websearch;
+ 
++/// 展开 error source 链（reqwest 的 Display 只给出 "error decoding response body"，
++/// 真实原因如连接重置 / h2 GOAWAY 在 source 中）
++fn error_chain(err: &dyn std::error::Error) -> String {
++    let mut parts = vec![err.to_string()];
++    let mut source = err.source();
++    while let Some(s) = source {
++        let msg = s.to_string();
++        if parts.last() != Some(&msg) {
++            parts.push(msg);
++        }
++        source = s.source();
++    }
++    parts.join(": ")
++}
++
+ /// 将 KiroProvider 错误映射为 HTTP 响应
+ fn map_provider_error(err: Error) -> Response {
+     let err_str = err.to_string();
+@@ -38,7 +53,7 @@ fn map_provider_error(err: Error) -> Response {
+             StatusCode::BAD_REQUEST,
+             Json(ErrorResponse::new(
+                 "invalid_request_error",
+-                "Context window is full. Reduce conversation history, system prompt, or tools.",
++                "prompt is too long: context window is full. Reduce conversation history, system prompt, or tools.",
+             )),
+         )
+             .into_response();
+@@ -51,7 +66,7 @@ fn map_provider_error(err: Error) -> Response {
+             StatusCode::BAD_REQUEST,
+             Json(ErrorResponse::new(
+                 "invalid_request_error",
+-                "Input is too long. Reduce the size of your messages.",
++                "prompt is too long: input exceeds the upstream limit. Reduce the size of your messages.",
+             )),
+         )
+             .into_response();
+@@ -437,6 +452,7 @@ pub async fn post_messages(
+         conversation_state: conversion_result.conversation_state,
+         profile_arn: None,
+         additional_model_request_fields: conversion_result.additional_model_request_fields,
++        inference_config: conversion_result.inference_config,
+     };
+ 
+     let request_body = match serde_json::to_string(&kiro_request) {
+@@ -599,8 +615,9 @@ fn create_sse_stream(
+                             Some((stream::iter(bytes), (body_stream, ctx, decoder, false, ping_interval)))
+                         }
+                         Some(Err(e)) => {
+-                            tracing::error!("读取响应流失败: {}", e);
+-                            ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", e));
++                            let cause = error_chain(&e);
++                            tracing::error!("读取响应流失败: {}", cause);
++                            ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", cause));
+                             let final_events = ctx.generate_final_events();
+                             let bytes: Vec<Result<Bytes, Infallible>> = final_events
+                                 .into_iter()
+@@ -683,6 +700,8 @@ async fn handle_non_stream_request(
+     // 从 contextUsageEvent 计算的实际输入 tokens
+     let mut context_input_tokens: Option<i32> = None;
+     let mut upstream_error: Option<(&'static str, String)> = None;
++    let mut provider_usage: Option<crate::kiro::model::events::TokenUsage> = None;
++    let mut upstream_stop_reason: Option<&'static str> = None;
+ 
+     // 收集工具调用的增量 JSON
+     let mut tool_json_buffers: std::collections::HashMap<String, String> =
+@@ -757,6 +776,18 @@ async fn handle_non_stream_request(
+                                 actual_input_tokens
+                             );
+                         }
++                        Event::Metadata(metadata) => {
++                            if let Some(usage) = metadata.token_usage {
++                                provider_usage = Some(usage.sanitized());
++                            }
++                            if let Some(reason) = metadata
++                                .stop_reason
++                                .as_deref()
++                                .and_then(super::stream::normalize_stop_reason)
++                            {
++                                upstream_stop_reason = Some(reason);
++                            }
++                        }
+                         Event::Exception { exception_type, message } => {
+                             if exception_type == "ContentLengthExceededException" {
+                                 stop_reason = "max_tokens".to_string();
+@@ -795,7 +826,17 @@ async fn handle_non_stream_request(
+         return (status, Json(ErrorResponse::new(error_type, message))).into_response();
+     }
+ 
+-    // 确定 stop_reason
++    // 确定 stop_reason：上游真实 stopReason 优先（本地已判定的更具体原因除外）
++    if stop_reason == "end_turn" {
++        if let Some(reason) = upstream_stop_reason {
++            stop_reason = match reason {
++                "end_turn" | "tool_use" if has_tool_use => "tool_use",
++                "tool_use" => "end_turn",
++                other => other,
++            }
++            .to_string();
++        }
++    }
+     if has_tool_use && stop_reason == "end_turn" {
+         stop_reason = "tool_use".to_string();
+     }
+@@ -857,9 +898,17 @@ async fn handle_non_stream_request(
+         "model": model,
+         "stop_reason": stop_reason,
+         "stop_sequence": null,
+-        "usage": {
+-            "input_tokens": final_input_tokens,
+-            "output_tokens": output_tokens
++        "usage": match provider_usage {
++            Some(u) => json!({
++                "input_tokens": u.uncached_input_tokens,
++                "cache_creation_input_tokens": u.cache_write_input_tokens,
++                "cache_read_input_tokens": u.cache_read_input_tokens,
++                "output_tokens": u.output_tokens
++            }),
++            None => json!({
++                "input_tokens": final_input_tokens,
++                "output_tokens": output_tokens
++            }),
+         }
+     });
+ 
+@@ -1052,6 +1101,7 @@ pub async fn post_messages_cc(
+         conversation_state: conversion_result.conversation_state,
+         profile_arn: None,
+         additional_model_request_fields: conversion_result.additional_model_request_fields,
++        inference_config: conversion_result.inference_config,
+     };
+ 
+     let request_body = match serde_json::to_string(&kiro_request) {
+@@ -1212,8 +1262,9 @@ fn create_buffered_sse_stream(
+                                 // 继续读取下一个 chunk，不发送任何数据
+                             }
+                             Some(Err(e)) => {
+-                                tracing::error!("读取响应流失败: {}", e);
+-                                ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", e));
++                                let cause = error_chain(&e);
++                                tracing::error!("读取响应流失败: {}", cause);
++                                ctx.mark_stream_error("api_error", format!("upstream stream interrupted: {}", cause));
+                                 let all_events = ctx.finish_and_get_all_events();
+                                 let bytes: Vec<Result<Bytes, Infallible>> = all_events
+                                     .into_iter()
+diff --git a/src/anthropic/stream.rs b/src/anthropic/stream.rs
+index 9535e87..c37214e 100644
+--- a/src/anthropic/stream.rs
++++ b/src/anthropic/stream.rs
+@@ -472,11 +472,7 @@ impl SseStateManager {
+         events
+     }
+ 
+-    pub fn generate_final_events(
+-        &mut self,
+-        input_tokens: i32,
+-        output_tokens: i32,
+-    ) -> Vec<SseEvent> {
++    pub fn generate_final_events(&mut self, usage: serde_json::Value) -> Vec<SseEvent> {
+         let mut events = self.close_open_blocks();
+ 
+         // 发送 message_delta
+@@ -490,10 +486,7 @@ impl SseStateManager {
+                         "stop_reason": self.get_stop_reason(),
+                         "stop_sequence": null
+                     },
+-                    "usage": {
+-                        "input_tokens": input_tokens,
+-                        "output_tokens": output_tokens
+-                    }
++                    "usage": usage
+                 }),
+             ));
+         }
+@@ -556,6 +549,10 @@ pub struct StreamContext {
+     pub omit_thinking: bool,
+     /// 上游中途错误 (error_type, message)；存在时流以 Anthropic `error` 事件结束
+     pub upstream_error: Option<(String, String)>,
++    /// metadataEvent 给出的精确用量（最后一份快照）
++    pub provider_usage: Option<crate::kiro::model::events::TokenUsage>,
++    /// metadataEvent 给出的真实 stopReason（已规范化）
++    pub upstream_stop_reason: Option<String>,
+ }
+ 
+ impl StreamContext {
+@@ -586,6 +583,43 @@ impl StreamContext {
+             strip_thinking_leading_newline: false,
+             omit_thinking: false,
+             upstream_error: None,
++            provider_usage: None,
++            upstream_stop_reason: None,
++        }
++    }
++
++    /// 上游真实 stopReason 优先于本地启发式；本地已判定的更具体原因（上下文溢出、
++    /// ContentLengthExceeded）保留；end_turn 不覆盖已出现的 tool_use。
++    fn apply_upstream_stop_reason(&mut self) -> bool {
++        if self.state_manager.stop_reason.is_some() {
++            return false;
++        }
++        let Some(reason) = self.upstream_stop_reason.clone() else {
++            return false;
++        };
++        let has_tool_use = self.state_manager.has_tool_use;
++        let resolved = match reason.as_str() {
++            "end_turn" | "tool_use" if has_tool_use => "tool_use".to_string(),
++            "tool_use" => "end_turn".to_string(),
++            _ => reason,
++        };
++        self.state_manager.set_stop_reason(resolved);
++        true
++    }
++
++    /// Anthropic 口径 usage：input_tokens 不含缓存命中/写入部分
++    fn final_usage_json(&self, fallback_input_tokens: i32) -> serde_json::Value {
++        match self.provider_usage {
++            Some(u) => json!({
++                "input_tokens": u.uncached_input_tokens,
++                "cache_creation_input_tokens": u.cache_write_input_tokens,
++                "cache_read_input_tokens": u.cache_read_input_tokens,
++                "output_tokens": u.output_tokens
++            }),
++            None => json!({
++                "input_tokens": self.context_input_tokens.unwrap_or(fallback_input_tokens),
++                "output_tokens": self.output_tokens
++            }),
+         }
+     }
+ 
+@@ -688,6 +722,15 @@ impl StreamContext {
+                 );
+                 Vec::new()
+             }
++            Event::Metadata(metadata) => {
++                if let Some(usage) = metadata.token_usage {
++                    self.provider_usage = Some(usage.sanitized());
++                }
++                if let Some(reason) = metadata.stop_reason.as_deref().and_then(normalize_stop_reason) {
++                    self.upstream_stop_reason = Some(reason.to_string());
++                }
++                Vec::new()
++            }
+             Event::Error {
+                 error_code,
+                 error_message,
+@@ -1272,22 +1315,19 @@ impl StreamContext {
+         // 如果整个流中只产生了 thinking 块，没有 text 也没有 tool_use，
+         // 则设置 stop_reason 为 max_tokens（表示模型耗尽了 token 预算在思考上），
+         // 并补发一套完整的 text 事件（内容为一个空格），确保 content 数组中有 text 块
++        let resolved_upstream = self.apply_upstream_stop_reason();
+         if self.thinking_enabled
+             && (had_thinking_block || self.thinking_block_index.is_some())
+             && !self.state_manager.has_non_thinking_blocks()
+         {
+-            self.state_manager.set_stop_reason("max_tokens");
++            if !resolved_upstream && self.state_manager.stop_reason.is_none() {
++                self.state_manager.set_stop_reason("max_tokens");
++            }
+             events.extend(self.create_text_delta_events(" "));
+         }
+ 
+-        // 使用从 contextUsageEvent 计算的 input_tokens，如果没有则使用估算值
+-        let final_input_tokens = self.context_input_tokens.unwrap_or(self.input_tokens);
+-
+-        // 生成最终事件
+-        events.extend(
+-            self.state_manager
+-                .generate_final_events(final_input_tokens, self.output_tokens),
+-        );
++        let usage = self.final_usage_json(self.input_tokens);
++        events.extend(self.state_manager.generate_final_events(usage));
+         events
+     }
+ }
+@@ -1304,6 +1344,17 @@ pub fn upstream_error_type(code: &str) -> &'static str {
+     }
+ }
+ 
++pub fn normalize_stop_reason(raw: &str) -> Option<&'static str> {
++    match raw.trim().to_ascii_lowercase().replace('-', "_").as_str() {
++        "end_turn" => Some("end_turn"),
++        "tool_use" => Some("tool_use"),
++        "max_tokens" => Some("max_tokens"),
++        "stop_sequence" => Some("stop_sequence"),
++        "model_context_window_exceeded" => Some("model_context_window_exceeded"),
++        _ => None,
++    }
++}
++
+ /// Anthropic 流式中途错误事件：`event: error`
+ pub fn create_error_event(error_type: &str, message: &str) -> SseEvent {
+     SseEvent::new(
+@@ -1397,17 +1448,18 @@ impl BufferedStreamContext {
+         self.event_buffer.extend(final_events);
+ 
+         // 获取正确的 input_tokens
+-        let final_input_tokens = self
+-            .inner
+-            .context_input_tokens
+-            .unwrap_or(self.estimated_input_tokens);
++        let final_usage = self.inner.final_usage_json(self.estimated_input_tokens);
+ 
+-        // 更正 message_start 事件中的 input_tokens
++        // 更正 message_start 事件中的 input/cache tokens
+         for event in &mut self.event_buffer {
+             if event.event == "message_start" {
+                 if let Some(message) = event.data.get_mut("message") {
+                     if let Some(usage) = message.get_mut("usage") {
+-                        usage["input_tokens"] = serde_json::json!(final_input_tokens);
++                        for key in ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"] {
++                            if let Some(v) = final_usage.get(key) {
++                                usage[key] = v.clone();
++                            }
++                        }
+                     }
+                 }
+             }
+@@ -1445,6 +1497,87 @@ mod tests {
+     /// reasoning-only 流（只有 reasoningContentEvent，没有后续 text/tool_use）
+     /// 必须保留 thinking-only 终止语义：stop_reason=max_tokens + 补一个 text block。
+     /// close_reasoning_if_open() 会清 thinking_block_index，回归此前用 had_thinking_block 兜住。
++    fn metadata(usage: Option<crate::kiro::model::events::TokenUsage>, stop: Option<&str>) -> crate::kiro::model::events::Event {
++        crate::kiro::model::events::Event::Metadata(crate::kiro::model::events::MetadataEvent {
++            token_usage: usage,
++            stop_reason: stop.map(str::to_string),
++        })
++    }
++
++    #[test]
++    fn test_metadata_usage_and_stop_reason_override_estimates() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 999, false, HashMap::new());
++        let _initial = ctx.generate_initial_events();
++        let mut all = ctx.process_assistant_response("partial answer");
++        all.extend(ctx.process_kiro_event(&metadata(
++            Some(crate::kiro::model::events::TokenUsage {
++                uncached_input_tokens: 120,
++                output_tokens: 45,
++                cache_read_input_tokens: 3000,
++                cache_write_input_tokens: 80,
++            }),
++            Some("max_tokens"),
++        )));
++        all.extend(ctx.generate_final_events());
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "max_tokens");
++        assert_eq!(delta.data["usage"]["input_tokens"], 120);
++        assert_eq!(delta.data["usage"]["output_tokens"], 45);
++        assert_eq!(delta.data["usage"]["cache_read_input_tokens"], 3000);
++        assert_eq!(delta.data["usage"]["cache_creation_input_tokens"], 80);
++    }
++
++    #[test]
++    fn test_upstream_end_turn_does_not_override_tool_use() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, false, HashMap::new());
++        let _initial = ctx.generate_initial_events();
++        ctx.state_manager.set_has_tool_use(true);
++        let mut all = ctx.process_kiro_event(&metadata(None, Some("end_turn")));
++        all.extend(ctx.generate_final_events());
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "tool_use");
++    }
++
++    #[test]
++    fn test_thinking_only_uses_upstream_stop_reason_when_known() {
++        let mut ctx = StreamContext::new_with_thinking("test-model", 1, true, HashMap::new());
++        let _initial = ctx.generate_initial_events();
++        let mut all = ctx.process_reasoning_content(&crate::kiro::model::events::ReasoningContentEvent {
++            text: "thinking".to_string(),
++            signature: Some("sig".to_string()),
++            redacted_content: None,
++        });
++        all.extend(ctx.process_kiro_event(&metadata(None, Some("end_turn"))));
++        all.extend(ctx.generate_final_events());
++        let delta = all.iter().find(|e| e.event == "message_delta").expect("message_delta");
++        assert_eq!(delta.data["delta"]["stop_reason"], "end_turn");
++    }
++
++    #[test]
++    fn test_buffered_message_start_uses_provider_usage() {
++        let mut ctx = BufferedStreamContext::new("test-model", 777, false, HashMap::new());
++        ctx.process_and_buffer(&metadata(
++            Some(crate::kiro::model::events::TokenUsage {
++                uncached_input_tokens: 10,
++                output_tokens: 2,
++                cache_read_input_tokens: 500,
++                cache_write_input_tokens: 0,
++            }),
++            None,
++        ));
++        let events = ctx.finish_and_get_all_events();
++        let start = events.iter().find(|e| e.event == "message_start").expect("message_start");
++        assert_eq!(start.data["message"]["usage"]["input_tokens"], 10);
++        assert_eq!(start.data["message"]["usage"]["cache_read_input_tokens"], 500);
++    }
++
++    #[test]
++    fn test_normalize_stop_reason() {
++        assert_eq!(normalize_stop_reason("END_TURN"), Some("end_turn"));
++        assert_eq!(normalize_stop_reason("max-tokens"), Some("max_tokens"));
++        assert_eq!(normalize_stop_reason("weird"), None);
++    }
++
+     #[test]
+     fn test_upstream_error_event_ends_stream_with_error() {
+         let mut ctx = StreamContext::new_with_thinking("test-model", 1, false, HashMap::new());
+diff --git a/src/anthropic/types.rs b/src/anthropic/types.rs
+index 551d871..7075de0 100644
+--- a/src/anthropic/types.rs
++++ b/src/anthropic/types.rs
+@@ -135,6 +135,10 @@ pub struct MessagesRequest {
+     pub output_config: Option<OutputConfig>,
+     /// Claude Code 请求中的 metadata，包含 session 信息
+     pub metadata: Option<Metadata>,
++    #[serde(default)]
++    pub temperature: Option<f64>,
++    #[serde(default)]
++    pub top_p: Option<f64>,
+ }
+ 
+ /// 反序列化 system 字段，支持字符串或数组格式
+diff --git a/src/anthropic/websearch.rs b/src/anthropic/websearch.rs
+index dbd305d..d9d273a 100644
+--- a/src/anthropic/websearch.rs
++++ b/src/anthropic/websearch.rs
+@@ -574,6 +574,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         assert!(has_web_search_tool(&req));
+@@ -612,6 +614,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         // 多个工具时不应该被识别为纯 websearch 请求
+@@ -639,6 +643,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let query = extract_search_query(&req);
+@@ -664,6 +670,8 @@ mod tests {
+             thinking: None,
+             output_config: None,
+             metadata: None,
++            temperature: None,
++            top_p: None,
+         };
+ 
+         let query = extract_search_query(&req);
+diff --git a/src/http_client.rs b/src/http_client.rs
+index 92fe240..dbc1a67 100644
+--- a/src/http_client.rs
++++ b/src/http_client.rs
+@@ -49,7 +49,15 @@ pub fn build_client(
+     timeout_secs: u64,
+     tls_backend: TlsBackend,
+ ) -> anyhow::Result<Client> {
+-    let mut builder = Client::builder().timeout(Duration::from_secs(timeout_secs));
++    // keepalive 仅是传输层兜底（探测死连接、防中间设备回收空闲 TCP）。实测它挡不住
++    // 上游缓存大工具输入时约 240s 的应用层静默断连（见 converter 的分块约束）；且该链路
++    // 协商为 HTTP/1.1，h2 keepalive 仅在协商到 h2 时生效。
++    let mut builder = Client::builder()
++        .timeout(Duration::from_secs(timeout_secs))
++        .tcp_keepalive(Duration::from_secs(30))
++        .http2_keep_alive_interval(Duration::from_secs(30))
++        .http2_keep_alive_timeout(Duration::from_secs(20))
++        .http2_keep_alive_while_idle(true);
+ 
+     match tls_backend {
+         TlsBackend::Rustls => {
+diff --git a/src/kiro/model/events/base.rs b/src/kiro/model/events/base.rs
+index f8b38aa..603cd2b 100644
+--- a/src/kiro/model/events/base.rs
++++ b/src/kiro/model/events/base.rs
+@@ -14,6 +14,7 @@ pub enum EventType {
+     ToolUse,
+     /// 计费事件
+     Metering,
++    Metadata,
+     /// 上下文使用率事件
+     ContextUsage,
+     /// 推理内容事件（thinking 模型推理流）
+@@ -29,6 +30,7 @@ impl EventType {
+             "assistantResponseEvent" => Self::AssistantResponse,
+             "toolUseEvent" => Self::ToolUse,
+             "meteringEvent" => Self::Metering,
++            "metadataEvent" => Self::Metadata,
+             "contextUsageEvent" => Self::ContextUsage,
+             "reasoningContentEvent" => Self::ReasoningContent,
+             _ => Self::Unknown,
+@@ -41,6 +43,7 @@ impl EventType {
+             Self::AssistantResponse => "assistantResponseEvent",
+             Self::ToolUse => "toolUseEvent",
+             Self::Metering => "meteringEvent",
++            Self::Metadata => "metadataEvent",
+             Self::ContextUsage => "contextUsageEvent",
+             Self::ReasoningContent => "reasoningContentEvent",
+             Self::Unknown => "unknown",
+@@ -73,6 +76,8 @@ pub enum Event {
+     ToolUse(super::ToolUseEvent),
+     /// 计费
+     Metering(()),
++    /// 元数据（精确 token 用量 / stopReason）
++    Metadata(super::MetadataEvent),
+     /// 上下文使用率
+     ContextUsage(super::ContextUsageEvent),
+     /// 推理内容（thinking 模型推理流）
+@@ -123,6 +128,7 @@ impl Event {
+                 Ok(Self::ToolUse(payload))
+             }
+             EventType::Metering => Ok(Self::Metering(())),
++            EventType::Metadata => Ok(Self::Metadata(super::MetadataEvent::from_frame(&frame)?)),
+             EventType::ContextUsage => {
+                 let payload = super::ContextUsageEvent::from_frame(&frame)?;
+                 Ok(Self::ContextUsage(payload))
+diff --git a/src/kiro/model/events/metadata.rs b/src/kiro/model/events/metadata.rs
+new file mode 100644
+index 0000000..7f98f60
+--- /dev/null
++++ b/src/kiro/model/events/metadata.rs
+@@ -0,0 +1,82 @@
++//! 上游元数据事件
++//!
++//! `metadataEvent.tokenUsage` 是单次模型调用的精确 token 用量快照（非增量），
++//! 同一条流内以最后一份为准；部分 metadataEvent 只携带 `stopReason`。
++
++use serde::Deserialize;
++
++use crate::kiro::parser::error::ParseResult;
++use crate::kiro::parser::frame::Frame;
++
++use super::base::EventPayload;
++
++#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "camelCase")]
++pub struct TokenUsage {
++    #[serde(default)]
++    pub uncached_input_tokens: i32,
++    #[serde(default)]
++    pub output_tokens: i32,
++    #[serde(default)]
++    pub cache_read_input_tokens: i32,
++    #[serde(default)]
++    pub cache_write_input_tokens: i32,
++}
++
++impl TokenUsage {
++    pub fn sanitized(self) -> Self {
++        Self {
++            uncached_input_tokens: self.uncached_input_tokens.max(0),
++            output_tokens: self.output_tokens.max(0),
++            cache_read_input_tokens: self.cache_read_input_tokens.max(0),
++            cache_write_input_tokens: self.cache_write_input_tokens.max(0),
++        }
++    }
++}
++
++#[derive(Debug, Clone, Default, Deserialize)]
++#[serde(rename_all = "camelCase")]
++pub struct MetadataEvent {
++    #[serde(default)]
++    pub token_usage: Option<TokenUsage>,
++    #[serde(default)]
++    pub stop_reason: Option<String>,
++}
++
++impl EventPayload for MetadataEvent {
++    fn from_frame(frame: &Frame) -> ParseResult<Self> {
++        frame.payload_as_json()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn parses_token_usage_and_stop_reason() {
++        let event: MetadataEvent = serde_json::from_str(
++            r#"{"tokenUsage":{"uncachedInputTokens":101,"outputTokens":23,"cacheReadInputTokens":300,"cacheWriteInputTokens":40},"stopReason":"end_turn"}"#,
++        )
++        .unwrap();
++        let usage = event.token_usage.unwrap();
++        assert_eq!(usage.uncached_input_tokens, 101);
++        assert_eq!(usage.output_tokens, 23);
++        assert_eq!(usage.cache_read_input_tokens, 300);
++        assert_eq!(usage.cache_write_input_tokens, 40);
++        assert_eq!(event.stop_reason.as_deref(), Some("end_turn"));
++    }
++
++    #[test]
++    fn stop_reason_only_payload() {
++        let event: MetadataEvent = serde_json::from_str(r#"{"stopReason":"max_tokens"}"#).unwrap();
++        assert!(event.token_usage.is_none());
++        assert_eq!(event.stop_reason.as_deref(), Some("max_tokens"));
++    }
++
++    #[test]
++    fn sanitized_clamps_negative() {
++        let usage = TokenUsage { uncached_input_tokens: -1, output_tokens: 5, cache_read_input_tokens: -3, cache_write_input_tokens: 2 }.sanitized();
++        assert_eq!((usage.uncached_input_tokens, usage.cache_read_input_tokens), (0, 0));
++    }
++}
+diff --git a/src/kiro/model/events/mod.rs b/src/kiro/model/events/mod.rs
+index 649c79b..9c20377 100644
+--- a/src/kiro/model/events/mod.rs
++++ b/src/kiro/model/events/mod.rs
+@@ -5,11 +5,13 @@
+ mod assistant;
+ mod base;
+ mod context_usage;
++mod metadata;
+ mod reasoning;
+ mod tool_use;
+ 
+ pub use assistant::AssistantResponseEvent;
+ pub use base::Event;
+ pub use context_usage::ContextUsageEvent;
++pub use metadata::{MetadataEvent, TokenUsage};
+ pub use reasoning::ReasoningContentEvent;
+ pub use tool_use::ToolUseEvent;
+diff --git a/src/kiro/model/requests/kiro.rs b/src/kiro/model/requests/kiro.rs
+index 8c27c6d..b288802 100644
+--- a/src/kiro/model/requests/kiro.rs
++++ b/src/kiro/model/requests/kiro.rs
+@@ -46,6 +46,20 @@ pub struct KiroRequest {
+     /// Five tiers: `low / medium / high / xhigh / max`
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub additional_model_request_fields: Option<AdditionalModelRequestFields>,
++    /// 采样与输出上限（maxTokens / temperature / topP），与 Bedrock Converse 同形
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub inference_config: Option<InferenceConfig>,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
++#[serde(rename_all = "camelCase")]
++pub struct InferenceConfig {
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub max_tokens: Option<i32>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub temperature: Option<f64>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub top_p: Option<f64>,
+ }
+ 
+ /// Top-level container for the AWS Q CodeWhisperer `additionalModelRequestFields`
+@@ -58,6 +72,14 @@ pub struct AdditionalModelRequestFields {
+     /// Output configuration (including reasoning effort)
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub output_config: Option<KiroOutputConfig>,
++    /// GPT-5.6 系列的 effort 字段（Claude 系列用 output_config）
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub reasoning: Option<KiroReasoningConfig>,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct KiroReasoningConfig {
++    pub effort: String,
+ }
+ 
+ /// The effort control field recognized by the AWS Q backend
