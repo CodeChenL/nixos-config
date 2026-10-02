@@ -59,7 +59,7 @@ in
 
     security.pam.services.mixed-proxy.text = ''
       auth required ${pkgs.pam}/lib/security/pam_unix.so noreap
-      account required ${pkgs.pam}/lib/security/pam_unix.so noreap
+      account required ${pkgs.pam}/lib/security/pam_permit.so
     '';
 
     systemd.services.mixed-proxy = {
