@@ -11,13 +11,13 @@
 
 stdenv.mkDerivation {
   pname = "cix-vpu-driver";
-  version = "1.0.0";
+  version = "2026.07";
 
   src = fetchFromGitHub {
     owner = "cixtech";
     repo = "cix_opensource__vpu_driver";
     rev = "cix_mainline_dev";
-    hash = "sha256-YyOsuomP+jpAOoRfYySeCmmK/EzL799WQukaaLMmDdA=";
+    hash = "sha256-/OB4NvqG1smJHZX5TiTsV31jEtZMEMsdaxvjI6OjsSg=";
   };
 
   # 自动应用 debian/patches/series 中的所有补丁

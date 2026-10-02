@@ -7,13 +7,13 @@
 
 stdenv.mkDerivation {
   pname = "cix-vpu-firmware";
-  version = "2026.02";
+  version = "2026.07";
 
   src = fetchFromGitHub {
     owner = "cixtech";
     repo = "cix_opensource__vpu_driver";
     rev = "cix_mainline_dev";
-    hash = "sha256-YyOsuomP+jpAOoRfYySeCmmK/EzL799WQukaaLMmDdA=";
+    hash = "sha256-/OB4NvqG1smJHZX5TiTsV31jEtZMEMsdaxvjI6OjsSg=";
   };
 
   dontBuild = true;
