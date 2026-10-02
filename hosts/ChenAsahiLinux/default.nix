@@ -60,7 +60,6 @@
     cores = 8;
     max-jobs = 2;
     max-substitution-jobs = 32;
-    sandbox = true;
   };
 
   boot.loader.systemd-boot.configurationLimit = 30;
