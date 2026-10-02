@@ -41,7 +41,7 @@
   # aarch64 设备在 nixpkgs 中部分包仍标记为 unsupported
   nixpkgs.config.allowUnsupportedSystem = true;
 
-  # ── 内核：默认使用 linux-cix-main（Linux v7.0 + CIX 补丁）────────
+  # ── 内核：默认使用 linux-cix-main（Linux v7.1.5 + CIX 7.1 补丁）──
   # 覆盖 nixos-hardware-radxa 默认的 BSP 内核
   boot.kernelPackages = lib.mkForce pkgs.linuxPackages-cix-main;
   # cix-linux-main README 要求的必要内核参数（补充而非覆盖）
@@ -80,19 +80,6 @@
   # 禁用 PulseAudio，使用 PipeWire 替代
   services.pulseaudio.enable = false;
 
-  # ── specialisation：保留 BSP 内核启动项 ─────────────────────────
-  # 开机时在 systemd-boot 菜单选择 "BSP Kernel (6.6)" 即可切回 BSP 内核
-  specialisation.bsp-kernel.configuration = {
-    boot.kernelPackages = lib.mkOverride 40 pkgs.linuxPackages_cix;
-    boot.kernelParams = lib.mkOverride 40 [
-      "acpi=force"
-      "kasan=off"
-    ];
-    boot.extraModulePackages = lib.mkOverride 40 (with pkgs.linuxPackages_cix; [
-      cix_vpu_driver
-    ]);
-  };
-
   # ── Radxa Cachix 二进制缓存（加速 ARM 构建）────────────────────────
   # 由 Radxa nixos-hardware 模块提供该 option
   hardware.radxa.cachix.enable = true;
@@ -110,12 +97,10 @@
   # Orion O6N 是 12 核 CPU，优化构建利用率：
   # max-jobs=4 × cores=3 = 12，刚好用满所有核心，避免过度竞争
   nix.settings = {
-    cores = 12;
+    cores = 6;
     max-jobs = 2;
     # 增加下载并行度，加速二进制缓存拉取
     max-substitution-jobs = 32;
-    # 启用沙箱构建，提高安全性
-    sandbox = true;
   };
 
   # ── SSH（首次部署后远程管理）─────────────────────────────────────
