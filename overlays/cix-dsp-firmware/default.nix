@@ -9,9 +9,11 @@
 
 stdenv.mkDerivation {
   pname = "cix-dsp-firmware";
-  version = "2026.02";
+  version = "2026.06";
 
   # 从 cixtech 私有仓库获取 DSP 固件
+  # 注：cix_proprietary 仓库没有 cix_mainline_dev 分支，该文件是固件 blob，
+  # 不依赖内核版本，使用 cix_p1_k6.6_master 分支的最新版本即可
   src = fetchurl {
     url = "https://github.com/cixtech/cix_proprietary__cix_proprietary/raw/refs/heads/cix_p1_k6.6_master/cix_proprietary-debs/cix-audio-dsp/usr/lib/firmware/dsp_fw.bin";
     hash = "sha256-FQ4BBHqEKpqlQbf852qWVavoAWHeVBaiyQdaBNLlFAg=";

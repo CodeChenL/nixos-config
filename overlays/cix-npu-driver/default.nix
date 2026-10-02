@@ -17,7 +17,7 @@ stdenv.mkDerivation {
     owner = "cixtech";
     repo = "cix_opensource__npu_driver";
     rev = "cix_mainline_dev";
-    hash = "sha256-eq95TOZwG7lisyq5koSaoRK4QB+QVQcgDJj+3Ekgf2s=";
+    hash = "sha256-4ba2tk2c26OEjFW5TrmiMJzM+EcKso31EEhV9hRtdjw=";
   };
 
   # 自动应用 debian/patches/series 中的所有补丁
