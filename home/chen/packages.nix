@@ -51,7 +51,7 @@ let
 
     # Sub2API OpenAI passthrough must remain disabled for Responses API compatibility.
     "llm-pi-ai".providers.openai = {
-      baseURL = "http://api.chenjaly.cn:8080/v1";
+      baseURL = "https://api.chenjaly.cn/v1";
       apiKeyEnv = "OPENAI_API_KEY";
     };
 

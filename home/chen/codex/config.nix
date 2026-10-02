@@ -26,7 +26,7 @@ let
   providers = {
     ChenIdeaCentre = {
       name = "ChenIdeaCentre";
-      base_url = "http://api.chenjaly.cn:8080/v1";
+      base_url = "https://api.chenjaly.cn/v1";
       wire_api = "responses";
       auth = providerAuth "and.key";
       http_headers = { "x-openai-actor-authorization" = "local-image-extension"; };

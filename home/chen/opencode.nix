@@ -64,8 +64,11 @@ in
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
       plugin = [
-        "opencode-mem@latest"
-        "oh-my-openagent@beta"
+        # 打过补丁的 2.26.0（压缩后注入记忆时保留会话当前模型），见 overlays/pkgs/opencode-mem。
+        # store 路径进入 spec，补丁或版本变化会换新的安装缓存目录，不会卡在旧缓存。
+        "opencode-mem@file:${pkgs.opencode-mem}"
+        # 固定 beta.84 修正后台任务假完成；回归测试随 tarball 构建运行。
+        "oh-my-openagent@file:${pkgs.oh-my-openagent}"
       ];
       autoupdate = false;
       mcp = (lib.optionalAttrs
@@ -95,10 +98,13 @@ in
       provider = {
         "openai" = {
           options = {
-            baseURL = "http://api.chenjaly.cn:8080/v1";
+            baseURL = "https://api.chenjaly.cn/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
           };
+          # 模型默认值仅在代理未提供推理选项时生效；代理选项及显式 variant 优先。
+          models."gpt-6.1-sol".options.reasoningEffort = "xhigh";
+          models."gpt-6-astra".options.reasoningEffort = "xhigh";
         };
       };
     };
@@ -111,14 +117,21 @@ in
     text = builtins.toJSON {
       "$schema" = "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json";
       "[opencode]" = {
+        background_task = {
+          staleTimeoutMs = 2 * 60 * 60 * 1000;
+          messageStalenessTimeoutMs = 2 * 60 * 60 * 1000;
+          taskTtlMs = 2 * 60 * 60 * 1000;
+          sessionGoneTimeoutMs = 10 * 60 * 1000;
+          taskCleanupDelayMs = 30 * 60 * 1000;
+        };
         # 错误期自动切换模型（runtime-fallback hook，默认关闭）：中止当前请求并把最后一条
         # prompt 重派到链中下一个模型，带冷却/次数/超时控制。与 model_fallback 互斥，只开其一。
         runtime_fallback = {
           enabled = true;
           # 代理（sub2api）配额/模型不可用常返回 4xx，纳入触发码即时切换（官方 Proxy APIs 建议）。
           retry_on_errors = [ 400 401 403 404 429 500 502 503 504 ];
-          # 4 档链需要 4 次尝试才能走完（默认 3 不够）。
-          max_fallback_attempts = 4;
+          # Sisyphus 有 5 个备用条目，需允许 5 次切档才能走完整条链。
+          max_fallback_attempts = 5;
           cooldown_seconds = 15;
           # 保持 30s（不采用调优建议的 10s）：链上是 xhigh/max 高思考档，
           # 10s 会把长思考的正常首发延迟误判为挂起并过早切档。
@@ -128,6 +141,15 @@ in
           restore_primary_after_cooldown = true;
         };
         agents = {
+          plan = {
+            models = [
+              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
+              "kimi-code-plan-cn/k3(max)"
+              "deepseek/deepseek-flash(max)"
+              "minimax-cn-coding-plan/MiniMax-M3"
+            ];
+          };
           oracle = {
             models = [
               { model = "openai/gpt-6-astra"; variant = "xhigh"; }
@@ -157,7 +179,7 @@ in
           };
           multimodal-looker = {
             models = [
-              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -166,7 +188,7 @@ in
           };
           metis = {
             models = [
-              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -175,7 +197,7 @@ in
           };
           momus = {
             models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -184,10 +206,10 @@ in
           };
           # 主会话（sisyphus）自身的错误回退链；只加链、不动主模型。
           # runtime-fallback 没有内建兜底链，不声明时主会话遇错不会自动切换。
-          # 主会话通常运行在 mimo-v2.6-pro，同 provider 档位后置，减少切回原厂牌的无效尝试。
+          # 首个备用为日常主力 Sol，后续跨 provider 回退；Astra 留给独立的高难度档。
           sisyphus = {
             fallback_models = [
-              "openai/gpt-6-astra(xhigh)"
+              "openai/gpt-6.1-sol(xhigh)"
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -195,10 +217,9 @@ in
             ];
           };
           sisyphus-junior = {
-            # FIXME(OMO beta.43): Junior's factory ignores normalized reasoning and
-            # registers medium. Keep xhigh intent until upstream fixes the factory.
+            # beta.84 本地补丁让 Junior 工厂读取规范化后的 reasoning，显式保留 xhigh。
             models = [
-              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -209,7 +230,7 @@ in
         categories = {
           visual-engineering = {
             models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -227,7 +248,7 @@ in
           # beta.84 起 deep 仅为 deep-low 的 legacy 别名；两个类别显式声明，deep-high 不再吃内建链。
           deep-low = {
             models = [
-              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
@@ -319,7 +340,7 @@ in
           };
           unspecified-high = {
             models = [
-              { model = "openai/gpt-5.6-sol"; variant = "xhigh"; }
+              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
               "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
               "kimi-code-plan-cn/k3(max)"
               "deepseek/deepseek-flash(max)"
