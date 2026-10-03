@@ -10,6 +10,7 @@ const { createEndpoints } = require('./mixed-proxy/endpoints.cjs');
 const { certificate, certificateCases } = require('./mixed-proxy/certificates.cjs');
 const { createCurl, authenticationCases, httpCases, socksCases } = require('./mixed-proxy/cases.cjs');
 const { udpCases } = require('./mixed-proxy/udp-cases.cjs');
+const { gameUdpCases } = require('./mixed-proxy/game-udp.cjs');
 
 const usage = '用法: node tests/mixed-proxy.test.cjs <Rust 二进制> <生成的 JSON>\nSTDIN: 一行隔离 VM 的合成 chen 密码，非空且最多 255 个 UTF-8 字节，不得包含 NUL 或 CR。\n依赖: Node.js 22+、curl（HTTPS-proxy）、openssl；仅在隔离 VM 内以 chen 用户运行，目标均为本机回环地址。\n范围: 通过真实客户端协议验证 Rust 原生 PAM、TLS 与 SOCKS5 TCP/UDP；账户策略、systemd 与 ACME 另由 VM 场景验证。';
 const args = process.argv.slice(2);
@@ -70,6 +71,7 @@ async function main([proxyArgument, generatedJson], password) {
     await httpCases(context);
     await socksCases(context);
     await udpCases(context);
+    await gameUdpCases(context);
     await certificateCases(context);
     assert.equal(proxy.finished, undefined, fixture.redact(proxy.stderr));
     await fixture.stop(proxy);

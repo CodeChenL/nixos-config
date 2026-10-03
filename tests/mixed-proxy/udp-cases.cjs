@@ -49,7 +49,7 @@ async function udpCases({ fixture, endpoints, ports, check, restartProxy }) {
     finally { await closeAssociation(association); await fixture.closeUdp(socket); }
   });
 
-  await check('TCP 对端来源筛选：127.0.0.2 放行，127.0.0.1 丢弃且关联继续可用', async () => {
+  await check('已绑定 UDP 来源筛选：127.0.0.2 放行，127.0.0.1 丢弃且关联继续可用', async () => {
     const association = await associate(fixture, ports, '127.0.0.2');
     const good = await fixture.bindUdp('127.0.0.2');
     const bad = await fixture.bindUdp('127.0.0.1');
