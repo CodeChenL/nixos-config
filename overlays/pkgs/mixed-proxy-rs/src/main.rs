@@ -51,6 +51,10 @@ mod streaming_tests;
 mod udp_target_tests;
 
 #[cfg(test)]
+#[path = "../tests/udp_rebind.rs"]
+mod udp_rebind_tests;
+
+#[cfg(test)]
 #[path = "../tests/trailers.rs"]
 mod trailer_tests;
 

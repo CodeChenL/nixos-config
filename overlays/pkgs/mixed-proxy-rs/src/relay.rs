@@ -5,7 +5,10 @@ use std::{
     collections::HashMap,
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU16, Ordering},
+    },
     time::Duration,
 };
 use tokio::{
@@ -21,6 +24,12 @@ const TARGET_IDLE: Duration = Duration::from_secs(60);
 
 pub struct ClientEndpoint {
     pinned: Option<IpAddr>,
+    port: Arc<AtomicU16>,
+}
+
+struct ClientReply {
+    ip: IpAddr,
+    port: Arc<AtomicU16>,
 }
 
 impl ClientEndpoint {
@@ -28,7 +37,10 @@ impl ClientEndpoint {
         if !requested.ip().is_unspecified() && requested.ip() != peer.ip() {
             return Err(io::Error::from(io::ErrorKind::PermissionDenied));
         }
-        Ok(Self { pinned: None })
+        Ok(Self {
+            pinned: None,
+            port: Arc::new(AtomicU16::new(0)),
+        })
     }
 
     pub(crate) fn accepts(&self, source: SocketAddr) -> bool {
@@ -86,6 +98,7 @@ async fn packets(
         if address.port() == 0 {
             continue;
         }
+        endpoint.port.store(source.port(), Ordering::Relaxed);
         while let Some(result) = tasks.try_join_next() {
             if !matches!(result, Ok(Ok(()))) {
                 tracing::debug!("UDP upstream ended");
@@ -122,7 +135,11 @@ async fn packets(
             continue;
         };
         let frontend = Arc::clone(relay);
-        tasks.spawn(upstream(socket, receiver, (frontend, source, address)));
+        let client = ClientReply {
+            ip: source.ip(),
+            port: Arc::clone(&endpoint.port),
+        };
+        tasks.spawn(upstream(socket, receiver, (frontend, client, address)));
         targets.insert(address, sender);
         endpoint.pinned = Some(source.ip());
     }
@@ -131,7 +148,7 @@ async fn packets(
 async fn upstream(
     socket: UdpSocket,
     mut packets: mpsc::Receiver<Bytes>,
-    destination: (Arc<UdpSocket>, SocketAddr, SocketAddr),
+    destination: (Arc<UdpSocket>, ClientReply, SocketAddr),
 ) -> anyhow::Result<()> {
     let (relay, client, origin) = destination;
     let mut buffer = vec![0; 65535];
@@ -151,7 +168,8 @@ async fn upstream(
                     let mut reply = Vec::with_capacity(header.len() + length);
                     reply.extend_from_slice(&header);
                     reply.extend_from_slice(&buffer[..length]);
-                    relay.send_to(&reply, client).await?;
+                    let address = SocketAddr::new(client.ip, client.port.load(Ordering::Relaxed));
+                    relay.send_to(&reply, address).await?;
                     Ok(true)
                 }
                 else => Ok(false),
