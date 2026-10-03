@@ -287,47 +287,83 @@ let
             value.extend(notification.read(1))
         return int(value)
 
-    def denied(proxy: str, index: int) -> float:
+    def authenticate_timed(proxy: str, index: int, accepted: bool = False) -> float:
         started = monotonic()
         if index % 2:
-            assert http_auth(proxy, Credentials()) in (401, 407)
+            status = http_auth(proxy, Credentials())
+            assert (status == 200) if accepted else (status in (401, 407)), status
         else:
             with control(proxy) as connection:
                 greet(connection, (b"\x05\x01\x02",))
-                assert authenticate(connection, Credentials()) is False
+                assert authenticate(connection, Credentials()) is accepted
         return monotonic() - started
 
     def bounded_authentication(proxy: str, directory: Path, resources: ExitStack) -> None:
         entered = resources.enter_context(os.fdopen(os.open(directory / "entered", os.O_RDWR), "rb", buffering=0))
         returned = resources.enter_context(os.fdopen(os.open(directory / "returned", os.O_RDWR), "rb", buffering=0))
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            requests = [executor.submit(denied, proxy, index) for index in range(4)]
+        with ThreadPoolExecutor(max_workers=18) as executor:
+            requests = [executor.submit(authenticate_timed, proxy, index) for index in range(18)]
             workers: list[int] = []
             try:
-                for _ in range(4):
+                for _ in range(16):
                     workers.append(read_pid(entered))
-                assert len(set(workers)) == 4
-                for index in range(2):
-                    assert denied(proxy, index) < 2, "Fifth authentication must reject immediately"
+                assert len(set(workers)) == 16
+                assert not select.select([entered], [], [], 0.2)[0], "Seventeenth PAM worker started"
+                assert all(not request.done() for request in requests), "Authentication rejected instead of queueing"
                 elapsed = [request.result(timeout=16) for request in requests]
                 assert all(9 <= duration < 16 for duration in elapsed), elapsed
                 assert all((directory / f"gate-{worker}").exists() for worker in workers)
-                for index in range(2):
-                    assert denied(proxy, index) < 2, "Timed-out FFI workers must retain their permits"
+                with ThreadPoolExecutor(max_workers=2) as waiters:
+                    queued = [waiters.submit(authenticate_timed, proxy, index) for index in range(2)]
+                    durations = [request.result(timeout=16) for request in queued]
+                    assert all(9 <= duration < 16 for duration in durations), durations
+                assert not select.select([entered], [], [], 0)[0], "Timed-out PAM workers released their permits"
             finally:
                 for worker in workers:
                     with (directory / f"gate-{worker}").open("w") as gate:
                         gate.write("release\n")
                 assert {read_pid(returned) for _ in workers} == set(workers)
 
+    def queued_authentication(proxy: str, directory: Path, resources: ExitStack) -> None:
+        entered = resources.enter_context(os.fdopen(os.open(directory / "entered", os.O_RDWR), "rb", buffering=0))
+        returned = resources.enter_context(os.fdopen(os.open(directory / "returned", os.O_RDWR), "rb", buffering=0))
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            requests = [executor.submit(authenticate_timed, proxy, index, True) for index in range(32)]
+            workers: list[int] = []
+            try:
+                workers = [read_pid(entered) for _ in range(16)]
+                assert len(set(workers)) == 16
+                assert not select.select([entered], [], [], 0.2)[0], "Worker limit exceeded"
+                assert all(not request.done() for request in requests)
+                first = set(workers)
+                for worker in workers:
+                    with (directory / f"gate-{worker}").open("w") as gate:
+                        gate.write("release\n")
+                assert {read_pid(returned) for _ in workers} == first
+                workers = [read_pid(entered) for _ in range(16)]
+                assert first.isdisjoint(workers)
+                for worker in workers:
+                    with (directory / f"gate-{worker}").open("w") as gate:
+                        gate.write("release\n")
+                assert {read_pid(returned) for _ in workers} == set(workers)
+                workers = []
+                assert all(request.result(timeout=16) < 16 for request in requests)
+            finally:
+                for worker in workers:
+                    gate_path = directory / f"gate-{worker}"
+                    if gate_path.exists():
+                        with gate_path.open("w") as gate:
+                            gate.write("release\n")
+        print("PASS 32 native PAM authentications complete with 16 workers")
+
     def bounded_shutdown(proxy: str, directory: Path, resources: ExitStack) -> None:
         entered = resources.enter_context(os.fdopen(os.open(directory / "entered", os.O_RDWR), "rb", buffering=0))
         resources.enter_context(os.fdopen(os.open(directory / "returned", os.O_RDWR), "rb", buffering=0))
-        for _ in range(4):
+        for _ in range(16):
             connection = resources.enter_context(control(proxy))
             greet(connection, (b"\x05\x01\x02",))
             send_credentials(connection, Credentials())
-        workers = [read_pid(entered) for _ in range(4)]
+        workers = [read_pid(entered) for _ in range(16)]
         group = subprocess.run(["systemctl", "show", "-p", "ControlGroup", "--value", "mixed-proxy"],
                                capture_output=True, text=True, check=True).stdout.strip()
         assert group
@@ -355,7 +391,7 @@ let
                 policy.write_text("auth required ${pkgs.pam}/lib/security/pam_exec.so "
                                   + "${pamBlocker} " + temporary + "\n" + original)
                 with ExitStack() as resources:
-                    actions = {"bounds": bounded_authentication, "stop": bounded_shutdown}
+                    actions = {"bounds": bounded_authentication, "queue": queued_authentication, "stop": bounded_shutdown}
                     actions[mode](proxy, directory, resources)
             except (AssertionError, OSError, subprocess.SubprocessError):
                 subprocess.run(["systemctl", "stop", "mixed-proxy"], check=True, timeout=20)
@@ -743,7 +779,11 @@ pkgs.testers.runNixOSTest {
                 proxy.succeed(f"printf %s {quote(policy)} > /etc/pam.d/mixed-proxy")
             probe(clientA, "accept")
 
-    with subtest("four shared native PAM slots retain permits after the ten-second caller deadline"):
+    with subtest("32 concurrent native PAM authentications queue behind 16 shared workers"):
+        proxy.succeed(f"python /etc/mixed_proxy_pam_bounds.py queue {proxy_ip}", timeout=60)
+        probe(clientA, "accept")
+
+    with subtest("16 shared native PAM slots retain permits after the ten-second caller deadline"):
         before = target.succeed("wc -l < /var/log/nginx/access.log")
         try:
             proxy.succeed(f"python /etc/mixed_proxy_pam_bounds.py bounds {proxy_ip}", timeout=60)
@@ -778,7 +818,7 @@ pkgs.testers.runNixOSTest {
         assert udp(clientA, "domain/client-a-domain") == "client-a-domain"
         assert udp(clientB, "ipv4/client-b-ipv4") == "client-b-ipv4"
 
-    with subtest("actual TCP peer IP pins UDP source and ignores other client"):
+    with subtest("pinned UDP source IP rejects the other client and preserves the association"):
         assert udp(clientB, f"inject/{port_a}/wrong-client-b") == "dropped"
         assert udp(clientA, f"inject/{port_b}/wrong-client-a") == "dropped"
         assert udp(clientA, "domain/after-wrong-source-a") == "after-wrong-source-a"
@@ -807,8 +847,9 @@ pkgs.testers.runNixOSTest {
         proxy.wait_until_succeeds(f"! ss -H -uanp | grep -F '{proxy_ip}:' | grep -F '\"mixed-proxy\"'")
 
     with subtest("complete Node protocol suite runs as chen against native PAM inside the VM"):
-        proxy.succeed("printf '%s\\n' '${fixturePassword}' | runuser -u chen -- "
-                      "node ${nodeSource}/mixed-proxy.test.cjs "
-                      "${pkgs.mixed-proxy-rs}/bin/mixed-proxy /etc/mixed-proxy/config.json", timeout=240)
+        output = proxy.succeed("printf '%s\\n' '${fixturePassword}' | runuser -u chen -- "
+                               "node ${nodeSource}/mixed-proxy.test.cjs "
+                               "${pkgs.mixed-proxy-rs}/bin/mixed-proxy /etc/mixed-proxy/config.json", timeout=240)
+        print(output)
   '';
 }
