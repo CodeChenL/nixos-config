@@ -39,6 +39,10 @@ mod auth_protocol_tests;
 mod auth_queue_tests;
 
 #[cfg(test)]
+#[path = "../tests/transport.rs"]
+mod transport_tests;
+
+#[cfg(test)]
 #[path = "../tests/streaming.rs"]
 mod streaming_tests;
 
