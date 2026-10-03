@@ -8,7 +8,7 @@ use tokio::{
 
 const USER: &str = "chen";
 const SERVICE: &str = "mixed-proxy";
-const WORKERS: usize = 4;
+pub const WORKERS: usize = 16;
 const DEADLINE: Duration = Duration::from_secs(10);
 
 pub trait AuthBackend: Send + Sync {
@@ -62,9 +62,15 @@ impl Authenticator {
         else {
             return false;
         };
+        if Instant::now() >= deadline {
+            return false;
+        }
         let backend = Arc::clone(&self.backend);
         let worker = tokio::task::spawn_blocking(move || {
             let _permit: OwnedSemaphorePermit = permit;
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
             backend.check(&credentials)
         });
         matches!(timeout_at(deadline, worker).await, Ok(Ok(Ok(true)))) && Instant::now() < deadline

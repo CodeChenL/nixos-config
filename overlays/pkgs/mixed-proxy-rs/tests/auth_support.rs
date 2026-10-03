@@ -1,11 +1,16 @@
 use crate::{auth::AuthBackend, credentials::Credentials};
 use pam_client2::{ErrorCode, Result};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-    mpsc,
+use std::{
+    future::{Future, poll_fn},
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
+    task::Poll,
+    time::Duration,
 };
-use std::time::Duration;
 use tokio::sync::{mpsc as async_mpsc, oneshot};
 
 #[derive(Clone, Copy)]
@@ -95,9 +100,17 @@ impl Drop for BlockingContext {
 
 impl BlockingBackend {
     pub fn new() -> (Arc<Self>, async_mpsc::Receiver<BlockedCall>) {
-        let (started, receiver) = async_mpsc::channel(4);
+        let (started, receiver) = async_mpsc::channel(crate::auth::WORKERS);
         (Arc::new(Self { started }), receiver)
     }
+}
+
+pub async fn assert_pending<T: Future>(mut future: Pin<&mut T>) {
+    poll_fn(|context| {
+        assert!(future.as_mut().poll(context).is_pending());
+        Poll::Ready(())
+    })
+    .await;
 }
 
 impl AuthBackend for BlockingBackend {

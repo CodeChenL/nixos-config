@@ -1,9 +1,10 @@
-use super::Authenticator;
-use crate::{auth_support::BlockingBackend, credentials::Credentials};
+use super::{Authenticator, WORKERS};
+use crate::{
+    auth_support::{BlockingBackend, assert_pending},
+    credentials::Credentials,
+};
 use std::{
-    future::{Future, poll_fn},
     sync::{Arc, mpsc},
-    task::Poll,
     time::Duration,
 };
 use tokio::{
@@ -21,17 +22,13 @@ async fn rejects_completed_success_when_deadline_elapsed_before_poll() {
     let (backend, mut started) = BlockingBackend::new();
     let auth = Authenticator::with_backend(backend);
     let mut request = Box::pin(auth.check(credentials()));
-    poll_fn(|context| match request.as_mut().poll(context) {
-        Poll::Pending => Poll::Ready(()),
-        Poll::Ready(_) => panic!("blocked call completed before release"),
-    })
-    .await;
+    assert_pending(request.as_mut()).await;
     let call = started.recv().await.unwrap();
     tokio::time::pause();
     advance(Duration::from_secs(10)).await;
     call.release().await;
     let restored = Arc::clone(&auth.permits)
-        .acquire_many_owned(4)
+        .acquire_many_owned(WORKERS.try_into().unwrap())
         .await
         .unwrap();
     drop(restored);
@@ -40,27 +37,26 @@ async fn rejects_completed_success_when_deadline_elapsed_before_poll() {
 }
 
 #[tokio::test]
-async fn rejects_fifth_call_when_four_context_destructors_hold_permits() {
+async fn queues_when_all_context_destructors_hold_permits() {
     let (backend, mut started) = BlockingBackend::new();
     let auth = Arc::new(Authenticator::with_backend(backend));
     let mut tasks = JoinSet::new();
     let mut calls = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..WORKERS {
         let shared = Arc::clone(&auth);
         tasks.spawn(async move { shared.check(credentials()).await });
         calls.push(started.recv().await.unwrap());
     }
-    let accepted = timeout(Duration::from_millis(100), auth.check(credentials()))
-        .await
-        .unwrap_or(false);
+    let mut queued = Box::pin(auth.check(credentials()));
+    assert_pending(queued.as_mut()).await;
+    drop(queued);
     for call in calls {
         call.release().await;
     }
     while let Some(result) = tasks.join_next().await {
         assert!(result.unwrap());
     }
-    assert!(!accepted);
-    assert_eq!(auth.permits.available_permits(), 4);
+    assert_eq!(auth.permits.available_permits(), WORKERS);
 }
 
 #[tokio::test]
@@ -96,7 +92,7 @@ async fn retains_permits_and_rejects_late_success_when_deadline_expires() {
     let auth = Arc::new(Authenticator::with_backend(backend));
     let mut tasks = JoinSet::new();
     let mut calls = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..WORKERS {
         let shared = Arc::clone(&auth);
         tasks.spawn(async move { shared.check(credentials()).await });
         calls.push(started.recv().await.unwrap());
@@ -108,17 +104,13 @@ async fn retains_permits_and_rejects_late_success_when_deadline_expires() {
     }
     let remaining = auth.permits.available_permits();
     let mut overloaded_fut = Box::pin(auth.check(credentials()));
-    let overloaded = poll_fn(|cx| match overloaded_fut.as_mut().poll(cx) {
-        Poll::Ready(val) => Poll::Ready(val),
-        Poll::Pending => Poll::Ready(false),
-    })
-    .await;
+    assert_pending(overloaded_fut.as_mut()).await;
     drop(overloaded_fut);
     for call in calls {
         call.release().await;
     }
     let restored = Arc::clone(&auth.permits)
-        .acquire_many_owned(4)
+        .acquire_many_owned(WORKERS.try_into().unwrap())
         .await
         .unwrap();
     drop(restored);
@@ -128,7 +120,6 @@ async fn retains_permits_and_rejects_late_success_when_deadline_expires() {
     started.recv().await.unwrap().release().await;
     assert!(tasks.join_next().await.unwrap().unwrap());
     assert_eq!(remaining, 0);
-    assert!(!overloaded);
 }
 
 #[tokio::test]
@@ -137,7 +128,7 @@ async fn retains_permits_when_callers_are_aborted() {
     let auth = Arc::new(Authenticator::with_backend(backend));
     let mut tasks = JoinSet::new();
     let mut calls = Vec::new();
-    for _ in 0..4 {
+    for _ in 0..WORKERS {
         let shared = Arc::clone(&auth);
         tasks.spawn(async move { shared.check(credentials()).await });
         calls.push(started.recv().await.unwrap());
@@ -147,19 +138,18 @@ async fn retains_permits_when_callers_are_aborted() {
         assert!(result.unwrap_err().is_cancelled());
     }
     let remaining = auth.permits.available_permits();
-    let overloaded = timeout(Duration::from_millis(100), auth.check(credentials()))
-        .await
-        .unwrap_or(false);
+    let mut overloaded = Box::pin(auth.check(credentials()));
+    assert_pending(overloaded.as_mut()).await;
+    drop(overloaded);
     for call in calls {
         call.release().await;
     }
     let restored = Arc::clone(&auth.permits)
-        .acquire_many_owned(4)
+        .acquire_many_owned(WORKERS.try_into().unwrap())
         .await
         .unwrap();
     drop(restored);
     assert_eq!(remaining, 0);
-    assert!(!overloaded);
 }
 
 #[test]
@@ -180,36 +170,27 @@ fn retains_queued_permits_when_futures_are_dropped_before_worker_start() {
         let (backend, mut started) = BlockingBackend::new();
         let auth = Authenticator::with_backend(backend);
         let mut pending = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..WORKERS {
             let mut request = Box::pin(auth.check(credentials()));
-            poll_fn(|context| match request.as_mut().poll(context) {
-                Poll::Pending => Poll::Ready(()),
-                Poll::Ready(_) => panic!("queued call completed before worker start"),
-            })
-            .await;
+            assert_pending(request.as_mut()).await;
             pending.push(request);
         }
         drop(pending);
         let remaining = auth.permits.available_permits();
         let mut accepted_fut = Box::pin(auth.check(credentials()));
-        let accepted = poll_fn(|context| match accepted_fut.as_mut().poll(context) {
-            Poll::Ready(val) => Poll::Ready(val),
-            Poll::Pending => Poll::Ready(false),
-        })
-        .await;
+        assert_pending(accepted_fut.as_mut()).await;
         drop(accepted_fut);
         release.send(()).unwrap();
         blocker.await.unwrap();
-        for _ in 0..4 {
+        for _ in 0..WORKERS {
             started.recv().await.unwrap().release().await;
         }
         let restored = Arc::clone(&auth.permits)
-            .acquire_many_owned(4)
+            .acquire_many_owned(WORKERS.try_into().unwrap())
             .await
             .unwrap();
         drop(restored);
         assert_eq!(remaining, 0);
-        assert!(!accepted);
     });
     runtime.shutdown_timeout(Duration::from_secs(2));
 }
