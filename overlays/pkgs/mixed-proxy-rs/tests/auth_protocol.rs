@@ -1,5 +1,5 @@
 use crate::{auth::Authenticator, auth_support::BlockingBackend, support::Proxy};
-use std::{future::poll_fn, task::Poll, time::Duration};
+use std::time::Duration;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -34,7 +34,10 @@ async fn rejects_fifth_authentication_when_https_and_socks_share_four_workers() 
         .await
         .unwrap();
     let extra_call = started.try_recv();
-    assert!(extra_call.is_err(), "fifth call should queue, not start a worker");
+    assert!(
+        extra_call.is_err(),
+        "fifth call should queue, not start a worker"
+    );
     for call in calls {
         call.release().await;
     }

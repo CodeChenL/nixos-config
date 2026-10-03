@@ -22,7 +22,7 @@ fn filters_by_ip_when_udp_port_differs_from_tcp_port() {
     let peer: SocketAddr = "127.0.0.1:44321".parse().unwrap();
     let mut endpoint = ClientEndpoint::new(peer, "0.0.0.0:0".parse().unwrap()).unwrap();
     assert!(endpoint.accepts("127.0.0.1:12345".parse().unwrap()));
-    endpoint.pin(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+    endpoint.pin(IpAddr::V4(Ipv4Addr::LOCALHOST));
     assert!(endpoint.accepts("127.0.0.1:54321".parse().unwrap()));
     assert!(!endpoint.accepts("127.0.0.2:44321".parse().unwrap()));
     assert!(ClientEndpoint::new(peer, "127.0.0.2:0".parse().unwrap()).is_err());

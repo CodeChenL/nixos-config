@@ -20,7 +20,6 @@ const MAX_TARGETS: usize = 256;
 const TARGET_IDLE: Duration = Duration::from_secs(60);
 
 pub struct ClientEndpoint {
-    peer_ip: IpAddr,
     pinned: Option<IpAddr>,
 }
 
@@ -29,10 +28,7 @@ impl ClientEndpoint {
         if !requested.ip().is_unspecified() && requested.ip() != peer.ip() {
             return Err(io::Error::from(io::ErrorKind::PermissionDenied));
         }
-        Ok(Self {
-            peer_ip: peer.ip(),
-            pinned: None,
-        })
+        Ok(Self { pinned: None })
     }
 
     pub(crate) fn accepts(&self, source: SocketAddr) -> bool {
@@ -40,7 +36,7 @@ impl ClientEndpoint {
     }
 
     #[cfg(test)]
-    pub(crate) fn pin(&mut self, source: IpAddr) {
+    pub(crate) const fn pin(&mut self, source: IpAddr) {
         self.pinned = Some(source);
     }
 }

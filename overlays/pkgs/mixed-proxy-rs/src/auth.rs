@@ -58,8 +58,8 @@ impl Authenticator {
             return false;
         }
         let deadline = Instant::now() + DEADLINE;
-        let permit = timeout_at(deadline, Arc::clone(&self.permits).acquire_owned()).await;
-        let Ok(Ok(permit)) = permit else {
+        let Ok(Ok(permit)) = timeout_at(deadline, Arc::clone(&self.permits).acquire_owned()).await
+        else {
             return false;
         };
         let backend = Arc::clone(&self.backend);
