@@ -677,6 +677,7 @@ pkgs.testers.runNixOSTest {
         assert proxy.succeed("systemctl show -p TimeoutStopUSec --value mixed-proxy").strip() == "15s"
         assert proxy.succeed("systemctl show -p KillMode --value mixed-proxy").strip() == "control-group"
         assert proxy.succeed("systemctl show -p SendSIGKILL --value mixed-proxy").strip() == "yes"
+        assert proxy.succeed("systemctl show -p LimitNOFILE --value mixed-proxy").strip() == "65536"
         proxy.succeed("test -u /run/wrappers/bin/unix_chkpwd")
         assert proxy.succeed("stat -c %u /run/wrappers/bin/unix_chkpwd").strip() == "0"
         assert proxy.succeed(f"cat /proc/{proxy_pid}/comm").strip() == "mixed-proxy"

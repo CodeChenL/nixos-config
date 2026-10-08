@@ -84,6 +84,9 @@ in
         TimeoutStopSec = "15s";
         KillMode = "control-group";
         SendSIGKILL = true;
+        # Long-lived tunnels can hold many half-closed sockets; the default
+        # soft limit of 1024 makes the service die about once per day.
+        LimitNOFILE = 65536;
         ExecStart = "${pkgs.mixed-proxy-rs}/bin/mixed-proxy --config /etc/mixed-proxy/config.json";
         Restart = "on-failure";
         RestartSec = "5s";
