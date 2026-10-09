@@ -216,6 +216,25 @@ HTTPS 与 SOCKS5 两个入口共用一组凭据：用户名 `chen`，密码是�
 
 裸 SOCKS5 到代理这一段不加密，协议及口令协商为明文，内容是否加密由应用决定；
 通过 SOCKS5 访问 HTTPS 网站时，网站 TLS 仍由客户端与网站端到端建立。
+
+## VLESS + Reality 代理（8444，新增不替换）
+
+与 mixed-proxy（8443）并行的新一代代理：xray-core，VLESS + Reality + XTLS-Vision，
+抗主动探测（伪装目标 `www.apple.com:443`，实测其 TLS 航程形态与 xray 26.3.27 的
+镜像解析兼容；microsoft/bing/baidu 的航程会在证书记录处断掉——更换目标前先用
+loopback 实测）。服务单元 `xray-vless.service`，配置由 `hosts/Aliyun/vless.nix`
+在启动时从 `secrets/vless/{uuid,reality-private.key,short-id}` 渲染（不入仓库/Nix store）。
+
+- 客户端（mihomo/clash-verge-rev）：`home/chen/default.nix` 全局脚本已注入 `Aliyun-VLESS`
+  条目（UUID/公钥/short-id 运行时从 `secrets/vless/` 注入）；
+- 其他设备手工配置：server=`api.chenjaly.cn` port=8444，uuid 见 `secrets/vless/uuid`，
+  flow=`xtls-rprx-vision`，reality public-key 见 `secrets/vless/reality-public.key`，
+  short-id 见 `secrets/vless/short-id`，serverName=`www.apple.com`，fingerprint=`chrome`；
+- 密钥两端分别部署（本机与服务器的 `secrets/vless/` 内容须一致）；
+- 游戏 UDP 加速建议另行叠加 Hysteria2（VLESS 的 UDP-over-TCP 有队头阻塞，不适合实时游戏）；
+- xray 提示：Reality 监听非 443 端口理论上更易被识别（现 8444）；迁移替换阶段可考虑换 443。
+
+验收（2026-10-09）：本机经隧道 curl 出口 IP 3/3 = 47.254.74.103；mixed-proxy 未受影响。
 HTTPS 代理入口会加密客户端到代理这一段，但它仍是普通 HTTP 代理，只承载 TCP。
 
 UDP 仅经 SOCKS5 的标准 UDP ASSOCIATE 提供，不支持 BIND：客户端保持一条

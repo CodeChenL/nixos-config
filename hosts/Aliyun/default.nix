@@ -12,6 +12,7 @@ in
     ./kiro-rs.nix
     ./https.nix
     ./mixed-proxy.nix
+    ./vless.nix
     ../ChenIdeaCentre/sub2api.nix
   ];
 

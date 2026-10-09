@@ -7,6 +7,7 @@
 
 let
   clashProxyPasswordFile = "${config.home.homeDirectory}/nixos-config/secrets/mixed-proxy/password";
+  clashVlessSecretDir = "${config.home.homeDirectory}/nixos-config/secrets/vless";
   clashProxyScriptFile = "${config.xdg.dataHome}/io.github.clash-verge-rev.clash-verge-rev/profiles/Script.js";
   publicClashScriptTemplate = pkgs.writeText "clash-script-template.js" ''
     const prependRules = [
@@ -32,12 +33,12 @@ let
     ];
 
     const prependProxy = [
-      { name: "SOCKS5-Proxy", type: "socks5", server: "192.168.2.4", port: 7891, udp: true },
+      { name: "SOCKS5-Proxy", type: "socks5", server: "192.168.2.3", port: 7891, udp: true },
       { name: "Aliyun-SOCKS5", type: "socks5", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true },
-      { name: "Aliyun-HTTPS", type: "https", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__ }
+      { name: "Aliyun-VLESS", type: "vless", server: "api.chenjaly.cn", port: 8444, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } }
     ];
 
-    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-HTTPS"];
+    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-VLESS"];
 
     function main(config) {
       const existingRules = Array.isArray(config.rules) ? config.rules : [];
@@ -61,17 +62,17 @@ let
     let failureMessage = 'Clash proxy: invalid generator arguments.';
     let temporaryPath;
 
-    function readPassword(source) {
-      failureMessage = 'Clash proxy: cannot open password; require an existing regular file without a symlink.';
+    function readSecret(source) {
+      failureMessage = 'Clash proxy: cannot open secret; require an existing regular file without a symlink.';
       const descriptor = fs.openSync(source, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
       let bytes;
       try {
         const stat = fs.fstatSync(descriptor);
-        failureMessage = 'Clash proxy: password must be a regular file owned by the activation user with mode 0600.';
+        failureMessage = 'Clash proxy: secret must be a regular file owned by the activation user with mode 0600.';
         if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o7777) !== 0o600) {
           throw new Error();
         }
-        failureMessage = 'Clash proxy: password must be non-empty UTF-8, at most 255 bytes, without NUL/CR/LF except an optional terminal LF or CRLF.';
+        failureMessage = 'Clash proxy: secret must be non-empty UTF-8, at most 255 bytes, without NUL/CR/LF except an optional terminal LF or CRLF.';
         if (stat.size > 257) {
           throw new Error();
         }
@@ -125,18 +126,30 @@ let
     }
 
     try {
-      const [command, source, template, target] = process.argv.slice(2);
-      if (command === '--check-secret' && process.argv.length === 4) {
-        readPassword(source);
-      } else if (command === 'generate' && process.argv.length === 6) {
-        const password = readPassword(source);
-        failureMessage = 'Clash proxy: public script template must contain at least one password placeholder.';
+      const [command, source, vlessDir, template, target] = process.argv.slice(2);
+      const vlessSecret = (name) => readSecret(path.join(vlessDir, name));
+      if (command === '--check-secret' && process.argv.length === 5) {
+        readSecret(source);
+        vlessSecret('uuid');
+        vlessSecret('reality-public.key');
+        vlessSecret('short-id');
+      } else if (command === 'generate' && process.argv.length === 7) {
+        failureMessage = 'Clash proxy: public script template must contain all expected placeholders.';
         const script = fs.readFileSync(template, 'utf8');
-        const placeholder = '__CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__';
-        if (script.split(placeholder).length < 2) {
-          throw new Error();
+        const replacements = [
+          ['__CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__', readSecret(source)],
+          ['__CLASH_VLESS_RUNTIME_UUID__', vlessSecret('uuid')],
+          ['__CLASH_VLESS_REALITY_PUBLIC__', vlessSecret('reality-public.key')],
+          ['__CLASH_VLESS_SHORTID__', vlessSecret('short-id')],
+        ];
+        let out = script;
+        for (const [placeholder, value] of replacements) {
+          if (out.split(placeholder).length < 2) {
+            throw new Error();
+          }
+          out = out.replaceAll(placeholder, () => JSON.stringify(value));
         }
-        writeScript(target, script.replaceAll(placeholder, () => JSON.stringify(password)));
+        writeScript(target, out);
       } else {
         throw new Error();
       }
@@ -205,11 +218,11 @@ in
   '';
 
   home.activation.checkClashProxyPassword = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-    ${pkgs.nodejs}/bin/node ${clashProxyGenerator} --check-secret ${lib.escapeShellArg clashProxyPasswordFile} || exit 1
+    ${pkgs.nodejs}/bin/node ${clashProxyGenerator} --check-secret ${lib.escapeShellArg clashProxyPasswordFile} ${lib.escapeShellArg clashVlessSecretDir} || exit 1
   '';
 
   home.activation.writeClashProxyScript = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    run ${pkgs.nodejs}/bin/node ${clashProxyGenerator} generate ${lib.escapeShellArg clashProxyPasswordFile} ${publicClashScriptTemplate} ${lib.escapeShellArg clashProxyScriptFile} || exit 1
+    run ${pkgs.nodejs}/bin/node ${clashProxyGenerator} generate ${lib.escapeShellArg clashProxyPasswordFile} ${lib.escapeShellArg clashVlessSecretDir} ${publicClashScriptTemplate} ${lib.escapeShellArg clashProxyScriptFile} || exit 1
   '';
 
   # Clash Verge 当前激活 profile 使用的 script。
