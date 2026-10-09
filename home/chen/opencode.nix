@@ -7,6 +7,7 @@
 }:
 
 let
+  slimPlugin = "oh-my-opencode-slim@file:${pkgs.oh-my-opencode-slim}";
   opencodeServerPasswordFile = "${config.xdg.stateHome}/opencode/web-password";
   opencodeServerLauncher = pkgs.writeShellScript "opencode-serve" ''
     set -eu
@@ -20,11 +21,11 @@ let
     ${pkgs.coreutils}/bin/chmod 0600 "$password_file"
 
     export OPENCODE_SERVER_PASSWORD="$(< "$password_file")"
-    exec ${pkgs.unstable.opencode}/bin/opencode serve \
+    exec ${pkgs.opencode-v2}/bin/opencode serve \
       --hostname 0.0.0.0 \
       --port 4096 \
       --print-logs \
-      --log-level INFO
+      --log-level info
   '';
   ghidraMcpEnabled =
     (osConfig.networking.hostName or null) == "ChenIdeaCentre"
@@ -32,6 +33,10 @@ let
 in
 {
   # ocs reuses the opencode serve backend managed by opencode-web.service.
+  home.sessionVariables = {
+    OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS = "true";
+    OPENCODE_ENABLE_EXA = "1";
+  };
   home.packages = [
     (pkgs.writeShellScriptBin "ocs" ''
       set -eu
@@ -53,322 +58,137 @@ in
         export OPENCODE_SERVER_USERNAME=chen
       fi
 
-      exec ${pkgs.unstable.opencode}/bin/opencode attach "$url" --dir "$PWD" "$@"
+      # v2 无 attach 子命令：根命令 --server 即连接指定服务端打开 TUI。
+      exec ${pkgs.opencode-v2}/bin/opencode --server "$url" "$PWD" "$@"
     '')
   ];
 
   # ── OpenCode 声明式配置 ───────────────────────────────────────
-  # opencode.json: 模型、插件、行为配置（不含密钥，密钥由 auth.json 管理）
+  # opencode.json: 模型、插件、行为配置（不含密钥，activation 经 V2 API 同步）
+  # v2 原生键：plugins / permissions / providers / skills / update / mcp.servers
   xdg.configFile."opencode/opencode.json" = {
     force = true;
     text = builtins.toJSON {
       "$schema" = "https://opencode.ai/config.json";
-      plugin = [
-        # 打过补丁的 2.26.0（压缩后注入记忆时保留会话当前模型），见 overlays/pkgs/opencode-mem。
-        # store 路径进入 spec，补丁或版本变化会换新的安装缓存目录，不会卡在旧缓存。
+      plugins = [
+        # 2.28.3：上游 PR #326（压缩注入记忆保留会话当前模型）已合入，免补丁；
+        # dist/plugin.js 双导出（v1 server / v2 setup），store 路径进入 spec。
         "opencode-mem@file:${pkgs.opencode-mem}"
-        # 固定 beta.84 修正后台任务假完成；回归测试随 tarball 构建运行。
-        "oh-my-openagent@file:${pkgs.oh-my-openagent}"
-      ];
-      autoupdate = false;
-      mcp = (lib.optionalAttrs
-        (pkgs.konnect != null && (config.home.file.".config/konnect/config.toml".enable or false)) {
-        konnect = {
-          type = "local";
-          command = [
-            "${pkgs.konnect}/bin/konnect"
-            "--config"
-            "${config.home.homeDirectory}/.config/konnect/config.toml"
-          ];
-          enabled = true;
-        };
-      }) // (lib.optionalAttrs ghidraMcpEnabled {
-        ghidra = {
-          type = "local";
-          command = [
-            "${pkgs.ghidra-mcp-bridge}/bin/bridge-mcp-ghidra"
-            "--transport"
-            "stdio"
-            "--lazy"
-          ];
-          enabled = true;
-          timeout = 300000;
-        };
-      });
-      provider = {
-        "openai" = {
+        slimPlugin
+        # 模型代审授权插件（参考 Codex Guardian）：硬规则 + LLM 审查，fail-closed。
+        {
+          package = "opencode-approval@file:${pkgs.opencode-approval}";
           options = {
+            # 主审查模型档位须存在于目录派生的 variants（deepseek-flash 为 none/low/high/max）；
+            # 此前误写 xhigh 会被 model-resolver 以 VariantUnavailableError 拒绝，
+            # 导致 primary 永远不生效、实际依赖备用链。
+            reviewModel = {
+                providerID = "xiaomi-token-plan-cn";
+                id = "mimo-v2.6-pro";
+            };
+            # 审查模型链备用项：primary 失败（不可用/超时/输出非法）时按序降级，
+            # 跨供应商以增强可用性；全链失败才 fail-closed。
+            fallbackModels = [
+              {
+                providerID = "deepseek";
+                id = "deepseek-flash";
+                variant = "max";
+              }
+              {
+                providerID = "openai";
+                id = "gpt-6-luna-fast";
+                variant = "xhigh";
+              }
+            ];
+            onFailure = "deny";
+          };
+        }
+      ];
+      update = "disable";
+      default_agent = "orchestrator";
+      # 基线全部 ask：每个工具授权进 opencode-approval 的 permission.evaluate，
+      # 由硬规则/审查模型裁决 allow/deny，用户零问询；审查故障 fail-closed deny。
+      permissions = [
+        {
+          action = "*";
+          resource = "*";
+          effect = "ask";
+        }
+      ];
+      lsp = true;
+      skills = [ pkgs.oh-my-opencode-slim.skills ];
+      mcp = {
+        servers = (lib.optionalAttrs
+          (pkgs.konnect != null && (config.home.file.".config/konnect/config.toml".enable or false)) {
+          konnect = {
+            type = "local";
+            command = [
+              "${pkgs.konnect}/bin/konnect"
+              "--config"
+              "${config.home.homeDirectory}/.config/konnect/config.toml"
+            ];
+          };
+        }) // (lib.optionalAttrs ghidraMcpEnabled {
+          ghidra = {
+            type = "local";
+            command = [
+              "${pkgs.ghidra-mcp-bridge}/bin/bridge-mcp-ghidra"
+              "--transport"
+              "stdio"
+              "--lazy"
+            ];
+            timeout = {
+              startup = 300000;
+              execution = 300000;
+            };
+          };
+        });
+      };
+      providers = {
+        "openai" = {
+          settings = {
             baseURL = "https://api.chenjaly.cn/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
           };
-          # 模型默认值仅在代理未提供推理选项时生效；代理选项及显式 variant 优先。
-          models."gpt-6.1-sol".options.reasoningEffort = "xhigh";
-          models."gpt-6-astra".options.reasoningEffort = "xhigh";
         };
       };
     };
   };
 
-  # Unified beta configuration. 本文件位于 Nix store，插件的 config-migration 无法
-  # 重写它，启动时只会记录一条 warning（属预期行为，无需处理）。
-  home.file.".omo/omo.jsonc" = {
+  # v2 下 tui.json 是应用自身状态文件（CLI 主题/kv），不再由 HM 托管；
+  # TUI 插件改由 opencode.json plugins 列表的 exports["./tui"] 自动加载。
+
+  # cli.json: TUI/CLI 显示偏好（v2 "CLI settings"）。HM 托管后 /settings 对话框的
+  # 改动在下次 switch 会被覆盖（store 符号链接）——调整请改此处声明。
+  xdg.configFile."opencode/cli.json" = {
     force = true;
     text = builtins.toJSON {
-      "$schema" = "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json";
-      "[opencode]" = {
-        background_task = {
-          staleTimeoutMs = 2 * 60 * 60 * 1000;
-          messageStalenessTimeoutMs = 2 * 60 * 60 * 1000;
-          taskTtlMs = 2 * 60 * 60 * 1000;
-          sessionGoneTimeoutMs = 10 * 60 * 1000;
-          taskCleanupDelayMs = 30 * 60 * 1000;
-        };
-        # 错误期自动切换模型（runtime-fallback hook，默认关闭）：中止当前请求并把最后一条
-        # prompt 重派到链中下一个模型，带冷却/次数/超时控制。与 model_fallback 互斥，只开其一。
-        runtime_fallback = {
-          enabled = true;
-          # 代理（sub2api）配额/模型不可用常返回 4xx，纳入触发码即时切换（官方 Proxy APIs 建议）。
-          retry_on_errors = [ 400 401 403 404 429 500 502 503 504 ];
-          # Sisyphus 有 5 个备用条目，需允许 5 次切档才能走完整条链。
-          max_fallback_attempts = 5;
-          cooldown_seconds = 15;
-          # 保持 30s（不采用调优建议的 10s）：链上是 xhigh/max 高思考档，
-          # 10s 会把长思考的正常首发延迟误判为挂起并过早切档。
-          timeout_seconds = 30;
-          notify_on_fallback = true;
-          # 冷却结束后回到首选模型（默认 false 会停在 fallback 档）。
-          restore_primary_after_cooldown = true;
-        };
-        agents = {
-          plan = {
-            models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          oracle = {
-            models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          librarian = {
-            models = [
-              { model = "deepseek/deepseek-flash"; variant = "max"; }
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          explore = {
-            models = [
-              { model = "deepseek/deepseek-flash"; variant = "max"; }
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          multimodal-looker = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          metis = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          momus = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          # 主会话（sisyphus）自身的错误回退链；只加链、不动主模型。
-          # runtime-fallback 没有内建兜底链，不声明时主会话遇错不会自动切换。
-          # 首个备用为日常主力 Sol，后续跨 provider 回退；Astra 留给独立的高难度档。
-          sisyphus = {
-            fallback_models = [
-              "openai/gpt-6.1-sol(xhigh)"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          sisyphus-junior = {
-            # beta.84 本地补丁让 Junior 工厂读取规范化后的 reasoning，显式保留 xhigh。
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-        };
-        categories = {
-          visual-engineering = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-            # runtime-fallback 只读 fallback_models（不读 models 尾部），需显式重复备用档；
-            # 备用档用字符串 (suffix) 形式，对象条目会被加载管线改写成 reasoning、错误期丢档。
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          # beta.84 起 deep 仅为 deep-low 的 legacy 别名；两个类别显式声明，deep-high 不再吃内建链。
-          deep-low = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          deep-high = {
-            models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          # ultrabrain：硬逻辑/架构决策档。此前移除后 spawn 会落到 junior 的 model
-          # 覆盖（sol）且不注册错误期链（overrideModel 为真时返回 undefined），故显式恢复。
-          ultrabrain = {
-            models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          artistry = {
-            models = [
-              { model = "openai/gpt-6-astra"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "deepseek/deepseek-flash(max)"
-            ];
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "deepseek/deepseek-flash(max)"
-            ];
-          };
-          quick = {
-            models = [
-              { model = "deepseek/deepseek-flash"; variant = "max"; }
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-            fallback_models = [
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-          };
-          unspecified-low = {
-            models = [
-              { model = "deepseek/deepseek-flash"; variant = "max"; }
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-            fallback_models = [
-              "openai/gpt-6-luna-fast(xhigh)"
-              "kimi-code-plan-cn/k3(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-          };
-          unspecified-high = {
-            models = [
-              { model = "openai/gpt-6.1-sol"; variant = "xhigh"; }
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-            fallback_models = [
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-              "kimi-code-plan-cn/k3(max)"
-              "deepseek/deepseek-flash(max)"
-              "minimax-cn-coding-plan/MiniMax-M3"
-            ];
-          };
-          writing = {
-            models = [
-              { model = "deepseek/deepseek-flash"; variant = "max"; }
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "kimi-code-plan-cn/k3(max)"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-            fallback_models = [
-              "minimax-cn-coding-plan/MiniMax-M3"
-              "kimi-code-plan-cn/k3(max)"
-              "xiaomi-token-plan-cn/mimo-v2.6-pro(high)"
-            ];
-          };
-        };
+      "$schema" = "https://opencode.ai/v2/cli.json";
+      theme = { name = "opencode"; };
+      diffs = { wrap = "word"; };
+      session = {
+        sidebar = "auto";
+        scrollbar = true;
+        thinking = "hide";
+        markdown = "rendered";
+        grouping = "auto";
+        verbosity = "high";
+        permissions = "prompt";
+        image_preview = true;
+        new_location = "launch";
+      };
+      animations = true;
+      prompt = {
+        paste = "compact";
+        image_preview = true;
       };
     };
+  };
+
+  xdg.configFile."opencode/oh-my-opencode-slim.jsonc" = {
+    force = true;
+    text = builtins.toJSON (import ./opencode-slim.nix);
   };
 
   xdg.configFile."opencode/AGENTS.md" = {
@@ -395,42 +215,13 @@ in
     '';
   };
 
-  # auth.json: /connect 供应商密钥，从 secrets 文件读取，避免密钥进 nix store
+  # V2 只在一次性迁移时读取 auth.json。经官方凭据 API 同步当前 secrets，
+  # 不直接修改 SQLite、不启动/重启共享服务，密钥只在运行时读取且不进入 argv/store。
   home.activation.createOpencodeAuth = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        AUTH="$HOME/.local/share/opencode/auth.json"
-        SECRETS="$HOME/nixos-config/secrets/opencode"
-        if [ -f "$SECRETS/and.key" ] \
-          && [ -f "$SECRETS/deepseek.key" ] \
-          && [ -f "$SECRETS/kimi.key" ] \
-          && [ -f "$SECRETS/xiaomi.key" ] \
-          && [ -f "$SECRETS/minimax.key" ] \
-          && [ -f "$SECRETS/vamrs.key" ] \
-          && [ -f "$SECRETS/vamrs-atp.key" ]; then
-          mkdir -p "$(dirname "$AUTH")"
-          chmod 700 "$(dirname "$AUTH")"
-          AND=$(tr -d '\n' < "$SECRETS/and.key")
-          DSK=$(tr -d '\n' < "$SECRETS/deepseek.key")
-          KMK=$(tr -d '\n' < "$SECRETS/kimi.key")
-          MMK=$(tr -d '\n' < "$SECRETS/minimax.key")
-          VMK=$(tr -d '\n' < "$SECRETS/vamrs.key")
-          VMKA=$(tr -d '\n' < "$SECRETS/vamrs-atp.key")
-          XMK=$(tr -d '\n' < "$SECRETS/xiaomi.key")
-          AUTH_TMP="$AUTH.tmp"
-          (
-            umask 077
-            cat > "$AUTH_TMP" << EOF
-    {
-      "deepseek": {"type": "api", "key": "$DSK"},
-      "kimi-code-plan-cn": {"type": "api", "key": "$KMK"},
-      "xiaomi-token-plan-cn": {"type": "api", "key": "$XMK"},
-      "minimax-cn-coding-plan": {"type": "api", "key": "$MMK"},
-      "openai": {"type": "api", "key": "$AND"}
-    }
-    EOF
-          )
-          mv "$AUTH_TMP" "$AUTH"
-          chmod 600 "$AUTH"
-        fi
+    run ${pkgs.coreutils}/bin/env XDG_DATA_HOME=${lib.escapeShellArg config.xdg.dataHome} \
+      ${pkgs.python3}/bin/python3 ${./opencode-sync-credentials.py} \
+      --opencode ${pkgs.opencode-v2}/bin/opencode \
+      --secrets "$HOME/nixos-config/secrets/opencode"
   '';
 
   xdg.configFile."opencode/opencode-mem.jsonc" = {
@@ -491,6 +282,8 @@ in
         "HOME=${config.home.homeDirectory}"
         "OPENCODE_DISABLE_FFF=1"
         "OPENCODE_SERVER_USERNAME=chen"
+        "OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true"
+        "OPENCODE_ENABLE_EXA=1"
       ];
     };
 
