@@ -80,7 +80,6 @@ function injectedBody(effects, agent = session.agent) {
   const { path, body } = effects.requests[0];
   assert.deepEqual(path, { id: sessionID });
   assert.equal(body.agent, agent);
-  assert.notEqual(body.agent, fallback.agent);
   assert.equal(body.noReply, true);
   assert.equal(body.parts.length, 1);
   assert.equal(body.parts[0].id, "prt-compaction-123");
@@ -94,26 +93,41 @@ function injectedBody(effects, agent = session.agent) {
   return body;
 }
 
-function skippedUnresolvedModel(effects) {
-  assert.deepEqual(effects.requests, [], "an unresolved model must not inject with agent defaults");
-  assert.deepEqual(effects.toasts, [], "skipped injection must not report success");
-  assert.ok(effects.logs.some(([message, data]) =>
-    message === "Compaction: skipped memory injection because session model could not be resolved" &&
-    data.sessionID === sessionID));
-  assert.equal(effects.logs.some(([message]) => message === "Compaction memory injected"), false);
-  assert.equal(effects.logs.some(([message]) => message === "Compaction handler error"), false);
+// 上游（PR #326）在模型无法解析时"behaves as before"：仍按 agent 注入但绝不带 model/variant，
+// 保证 fallback agent 的模型永远不会顶掉会话模型。
+function injectedWithoutModel(effects, agent = fallback.agent) {
+  assert.equal(effects.requests.length, 1, "model-less injection still happens (upstream keeps pre-patch behaviour)");
+  const { path, body } = effects.requests[0];
+  assert.deepEqual(path, { id: sessionID });
+  assert.equal(body.agent, agent);
+  assert.equal(Object.hasOwn(body, "model"), false, "an unresolved model must never inject the agent's fallback model");
+  assert.equal(Object.hasOwn(body, "variant"), false);
+  assert.equal(body.noReply, true);
+  assert.equal(body.parts.length, 1);
+  assert.equal(body.parts[0].id, "prt-compaction-123");
+  assert.equal(body.parts[0].type, "text");
+  assert.equal(body.parts[0].synthetic, true);
+  assert.equal(typeof body.parts[0].text, "string");
+  assert.ok(body.parts[0].text.trim().length > 0);
   assert.deepEqual(effects.searches, [[sessionID, "fixture-project", 7]]);
+  assert.equal(effects.toasts.length, 1);
+  assert.equal(effects.toasts[0].body.variant, "success");
+  assert.ok(effects.logs.some(([message, data]) =>
+    message === "Compaction memory injected" &&
+    data.sessionID === sessionID && data.model === null));
+  assert.equal(effects.logs.some(([message]) => message === "Compaction handler error"), false);
 }
 
 for (const rawResponse of [false, true]) {
-  test(`compaction preserves explicit default in the injection request (${rawResponse ? "raw" : "SDK data"})`, async () => {
+  test(`compaction preserves the session model in the injection request (${rawResponse ? "raw" : "SDK data"})`, async () => {
     const { compact, effects } = fixture(session, { rawResponse });
     await compact();
     const body = injectedBody(effects);
     assert.deepEqual(body.model, { providerID: model.providerID, modelID: model.id });
     assert.notDeepEqual(body.model, fallback.model);
-    assert.equal(body.variant, "default");
-    assert.notEqual(body.variant, fallback.variant);
+    // 上游（PR #326）按 OpenCode 自身的归一化省略 "default" variant，省略即默认 variant。
+    assert.equal(Object.hasOwn(body, "variant"), false);
+    assert.notEqual(body.agent, fallback.agent);
     assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
     assert.ok(effects.logs.some(([message]) => message === "Compaction memory injected"));
   });
@@ -141,25 +155,37 @@ for (const variant of [undefined, "", null, 0, false, {}, []]) {
 for (const invalidModel of [
   undefined, null, {}, { providerID: model.providerID, modelID: model.id },
   { providerID: 42, id: model.id }, { providerID: model.providerID, id: false },
-  { providerID: "", id: model.id }, { providerID: model.providerID, id: "" },
-  { providerID: " \t", id: model.id }, { providerID: model.providerID, id: " \t" },
 ]) {
-  test(`compaction skips unresolved model ${JSON.stringify(invalidModel)} despite a message agent`, async () => {
+  test(`compaction omits an unresolved model ${JSON.stringify(invalidModel)} despite a message agent`, async () => {
     const { compact, effects } = fixture({ model: invalidModel }, { messages: agentMessages });
     await compact();
-    skippedUnresolvedModel(effects);
+    injectedWithoutModel(effects);
     assert.deepEqual(effects.messages, [{ path: { id: sessionID } }]);
     assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
   });
 }
 
-test("session.get failure skips injection despite a message agent and logs the resolver error", async () => {
+// 上游 resolveSessionModel 只校验 typeof 为 string，空/空白 providerID 与 id 视为已解析并原样透传。
+for (const oddModel of [
+  { providerID: "", id: model.id }, { providerID: model.providerID, id: "" },
+  { providerID: " \t", id: model.id }, { providerID: model.providerID, id: " \t" },
+]) {
+  test(`compaction passes the session model through verbatim for ${JSON.stringify(oddModel)}`, async () => {
+    const { compact, effects } = fixture({ model: oddModel }, { messages: agentMessages });
+    await compact();
+    const body = injectedBody(effects, fallback.agent);
+    assert.deepEqual(body.model, { providerID: oddModel.providerID, modelID: oddModel.id });
+    assert.equal(Object.hasOwn(body, "variant"), false);
+  });
+}
+
+test("session.get failure falls back to a model-less injection and logs the resolver error", async () => {
   const { compact, effects } = fixture(session, {
     getError: new Error("fixture read failed"),
     messages: agentMessages,
   });
   await compact();
-  skippedUnresolvedModel(effects);
+  injectedWithoutModel(effects);
   assert.deepEqual(effects.messages, [{ path: { id: sessionID } }]);
   assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
   assert.ok(effects.logs.some(([message, data]) =>
@@ -167,27 +193,37 @@ test("session.get failure skips injection despite a message agent and logs the r
     data.sessionID === sessionID && data.error === "Error: fixture read failed"));
 });
 
-test("unavailable session.get skips injection despite a message agent", async () => {
+test("unavailable session.get falls back to a model-less injection", async () => {
   const { compact, effects } = fixture(session, {
     noGet: true, messages: agentMessages,
   });
   await compact();
-  skippedUnresolvedModel(effects);
+  injectedWithoutModel(effects);
   assert.deepEqual(effects.reads, []);
   assert.deepEqual(effects.messages, [{ path: { id: sessionID } }]);
 });
 
-for (const response of [
-  { error: { name: "SessionReadError", message: "fixture SDK read failed" } },
-  { data: session, error: { name: "SessionReadError", message: "fixture SDK read failed" } },
-]) {
-  test(`SDK error response skips injection even with ${response.data ? "model-shaped data" : "a message agent"}`, async () => {
-    const { compact, effects } = fixture(response, { rawResponse: true, messages: agentMessages });
-    await compact();
-    skippedUnresolvedModel(effects);
-    assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
-  });
-}
+test("SDK error-only response falls back to a model-less injection", async () => {
+  const { compact, effects } = fixture(
+    { error: { name: "SessionReadError", message: "fixture SDK read failed" } },
+    { rawResponse: true, messages: agentMessages },
+  );
+  await compact();
+  injectedWithoutModel(effects);
+  assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
+});
+
+test("SDK error with data still resolves the model from the data payload", async () => {
+  const { compact, effects } = fixture(
+    { data: session, error: { name: "SessionReadError", message: "fixture SDK read failed" } },
+    { rawResponse: true, messages: agentMessages },
+  );
+  await compact();
+  const body = injectedBody(effects);
+  assert.deepEqual(body.model, { providerID: model.providerID, modelID: model.id });
+  assert.equal(Object.hasOwn(body, "variant"), false);
+  assert.deepEqual(effects.reads, [{ path: { id: sessionID } }, { path: { id: sessionID } }]);
+});
 
 test("unresolved session agent skips injection rather than selecting the fallback agent", async () => {
   const { compact, effects } = fixture({ model: session.model });
