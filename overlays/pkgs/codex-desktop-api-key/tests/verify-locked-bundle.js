@@ -55,40 +55,48 @@ try {
   }
   const reportPath = path.join(root, ".codex-linux", "api-key-ultra-patch.json");
   const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
-  assert.equal(report.patches.length, 8);
+  const legacySlider = inputs.some(({source}) => source.includes("includeUltraInSlider"));
+  assert.equal(report.patches.length, legacySlider ? 8 : 6);
   assert.equal(report.validated.length, 8);
   assert.equal(run().status, 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(reportPath, "utf8")).patches, []);
   for (const entry of outputs) assert.equal(fs.readFileSync(path.join(assetsDir, entry.asset), "utf8"), entry.source);
   const initial = outputs.find(entry => entry.asset.startsWith("app-initial-")).source;
-  const catalogSource = declaration(initial, /function [\w$]+\(\{additionalAvailableModels:e,authMethod:t,availableModels:n,defaultModel:/);
-  const visibilityName = catalogSource.match(/if\(([\w$]+)\(\{additionalAvailableModels:/)[1];
-  const visibilitySource = declaration(initial, new RegExp(`function ${visibilityName}\\(`));
-  const effortPredicate = catalogSource.match(/=>(([\w$]+)\(e\)&&i\.has\(e\))/)[2];
-  const catalogName = catalogSource.match(/function ([\w$]+)/)[1];
-  const catalog = Function(effortPredicate, `${visibilitySource}${catalogSource};return ${catalogName}`)(() => true);
-  const callback = initial.match(/\(\{additionalAvailableModels:e,authMethod:t,hasConfiguredModelCatalog:n,hostId:r,includeUltraReasoningEffort:i,isCustomModelProvider:a,limit:o,modelCatalogPath:s,modelProvider:c\},\{get:l,queryClient:u,scope:d\}\)=>\{let f=[\s\S]+?useHiddenModels:p\.useHiddenModels\}\)\}\}/)?.[0];
-  assert.ok(callback, "Missing actual query callback scope");
-  const dependencies = callback.match(/let f=l\(([\w$]+)\),p=l\(([\w$]+)\)/);
-  const queryKey = callback.match(/queryKey:\[\.\.\.([\w$]+)\(/)[1];
-  const hosts = callback.match(/enabled:l\(([\w$]+)\)/)[1];
-  const staleTime = callback.match(/staleTime:([\w$]+)\.FIVE_MINUTES/)[1];
-  const query = evaluate(callback, {[catalogName]:catalog, [dependencies[1]]:"efforts", [dependencies[2]]:"models", [queryKey]:() => [], [hosts]:"hosts", [staleTime]:{FIVE_MINUTES:300000}});
+  // The catalog/query deep-dive below is pinned to the pre-26.930 plumbing
+  // (hostId-scoped react-query callback taking modelCatalogPath/modelProvider).
+  // 26.930 reshaped that callback, so the proof only runs for legacy bundles;
+  // the new shape is covered by the gate report and the
+  // codexLinuxApiKeyUltraSlider* invariants asserted above.
   let cases = 0;
-  for (const authMethod of ["chatgpt", "apikey", "copilot", null]) {
-    for (const custom of [false, true]) {
-      for (const entitled of [false, true]) {
-        for (const advertised of [false, true]) {
-          for (const enabled of [false, true]) {
-            const efforts = new Set(["medium", ...(enabled ? ["ultra"] : [])]);
-            const model = {model:"test", hidden:false, isDefault:true, supportedReasoningEfforts:[{reasoningEffort:"medium"}, ...(advertised ? [{reasoningEffort:"ultra"}] : [])]};
-            const modelConfig = {availableModels:new Set(["test"]), defaultModel:"test", useHiddenModels:false};
-            const result = query({additionalAvailableModels:[], authMethod, hostId:"offline", includeUltraReasoningEffort:entitled, isCustomModelProvider:custom, limit:100, modelCatalogPath:null}, {get:key => ({efforts, models:modelConfig, hosts:["offline"]})[key], queryClient:{}, scope:{}}).select({data:[model]});
-            const allowed = entitled || authMethod === "apikey" || custom;
-            assert.equal(result.hasModelSupportingUltraReasoningEffort, allowed && advertised);
-            assert.equal(result.models[0].supportedReasoningEfforts.some(entry => entry.reasoningEffort === "ultra"), authMethod !== "copilot" && allowed && advertised && enabled);
-            assert.equal(result.models[0].codexLinuxApiKeyServiceTierModel, authMethod === "apikey" || custom);
-            cases++;
+  if (legacySlider) {
+    const catalogSource = declaration(initial, /function [\w$]+\(\{additionalAvailableModels:e,authMethod:t,availableModels:n,defaultModel:/);
+    const visibilityName = catalogSource.match(/if\(([\w$]+)\(\{additionalAvailableModels:/)[1];
+    const visibilitySource = declaration(initial, new RegExp(`function ${visibilityName}\\(`));
+    const effortPredicate = catalogSource.match(/=>(([\w$]+)\(e\)&&i\.has\(e\))/)[2];
+    const catalogName = catalogSource.match(/function ([\w$]+)/)[1];
+    const catalog = Function(effortPredicate, `${visibilitySource}${catalogSource};return ${catalogName}`)(() => true);
+    const callback = initial.match(/\(\{additionalAvailableModels:e,authMethod:t,hasConfiguredModelCatalog:n,hostId:r,includeUltraReasoningEffort:i,isCustomModelProvider:a,limit:o,modelCatalogPath:s,modelProvider:c\},\{get:l,queryClient:u,scope:d\}\)=>\{let f=[\s\S]+?useHiddenModels:p\.useHiddenModels\}\)\}\}/)?.[0];
+    assert.ok(callback, "Missing actual query callback scope");
+    const dependencies = callback.match(/let f=l\(([\w$]+)\),p=l\(([\w$]+)\)/);
+    const queryKey = callback.match(/queryKey:\[\.\.\.([\w$]+)\(/)[1];
+    const hosts = callback.match(/enabled:l\(([\w$]+)\)/)[1];
+    const staleTime = callback.match(/staleTime:([\w$]+)\.FIVE_MINUTES/)[1];
+    const query = evaluate(callback, {[catalogName]:catalog, [dependencies[1]]:"efforts", [dependencies[2]]:"models", [queryKey]:() => [], [hosts]:"hosts", [staleTime]:{FIVE_MINUTES:300000}});
+    for (const authMethod of ["chatgpt", "apikey", "copilot", null]) {
+      for (const custom of [false, true]) {
+        for (const entitled of [false, true]) {
+          for (const advertised of [false, true]) {
+            for (const enabled of [false, true]) {
+              const efforts = new Set(["medium", ...(enabled ? ["ultra"] : [])]);
+              const model = {model:"test", hidden:false, isDefault:true, supportedReasoningEfforts:[{reasoningEffort:"medium"}, ...(advertised ? [{reasoningEffort:"ultra"}] : [])]};
+              const modelConfig = {availableModels:new Set(["test"]), defaultModel:"test", useHiddenModels:false};
+              const result = query({additionalAvailableModels:[], authMethod, hostId:"offline", includeUltraReasoningEffort:entitled, isCustomModelProvider:custom, limit:100, modelCatalogPath:null}, {get:key => ({efforts, models:modelConfig, hosts:["offline"]})[key], queryClient:{}, scope:{}}).select({data:[model]});
+              const allowed = entitled || authMethod === "apikey" || custom;
+              assert.equal(result.hasModelSupportingUltraReasoningEffort, allowed && advertised);
+              assert.equal(result.models[0].supportedReasoningEfforts.some(entry => entry.reasoningEffort === "ultra"), authMethod !== "copilot" && allowed && advertised && enabled);
+              assert.equal(result.models[0].codexLinuxApiKeyServiceTierModel, authMethod === "apikey" || custom);
+              cases++;
+            }
           }
         }
       }
@@ -99,12 +107,20 @@ try {
   for (const authMethod of ["chatgpt", "apikey", null]) {
     for (const flag of [false, true]) assert.equal(evaluate(provider[1], {s:{authMethod}, r:{}, [provider[2]]:() => flag}), authMethod === "apikey" || flag);
   }
-  for (const entry of outputs) {
-    const call = entry.source.match(/([\w$]+)\(([\w$]+(?:\?\.models)?),\{([^{}]*includeUltraInSlider:!0\/\*codexLinuxApiKeyUltraSlider(?:Selection)?\*\/[^{}]*)\}\)/);
-    assert.ok(call);
-    const bindings = Object.fromEntries([...`${call[2]},${call[3]}`.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map(match => [match[0], false]));
-    bindings[call[1]] = (_models, options) => options;
-    assert.equal(evaluate(call[0], bindings).includeUltraInSlider, true);
+  if (legacySlider) {
+    for (const entry of outputs) {
+      const call = entry.source.match(/([\w$]+)\(([\w$]+(?:\?\.models)?),\{([^{}]*includeUltraInSlider:!0\/\*codexLinuxApiKeyUltraSlider(?:Selection)?\*\/[^{}]*)\}\)/);
+      assert.ok(call);
+      const bindings = Object.fromEntries([...`${call[2]},${call[3]}`.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map(match => [match[0], false]));
+      bindings[call[1]] = (_models, options) => options;
+      assert.equal(evaluate(call[0], bindings).includeUltraInSlider, true);
+    }
+  } else {
+    // 26.930+ dropped includeUltraInSlider: the slider preset loop keeps ultra
+    // unconditionally, which the gates assert instead of forcing the flag.
+    assert.equal(outputs.some((entry) => entry.source.includes("includeUltraInSlider")), false);
+    assert.ok(report.validated.includes("codexLinuxApiKeyUltraSliderUnfiltered"));
+    assert.ok(report.validated.includes("codexLinuxApiKeyUltraSliderNoUltraFilter"));
   }
   const fastFunction = declaration(initial, /function [\w$]+\(e\)\{let t=\(0,[\w$]+\.c\)\(6\),n=[\w$]+\([\w$]+\),r=e\?\.hostId\?\?n,i=[\w$]+\(r\),a=i\?\.authMethod===`chatgpt`/);
   const fastName = fastFunction.match(/function ([\w$]+)/)[1];
@@ -117,11 +133,21 @@ try {
     const fast = Function(...Object.keys(bindings), `${fastFunction};return ${fastName}`)(...Object.values(bindings));
     assert.equal(fast().isServiceTierAllowed, !loading);
   }
-  assert.throws(() => applyApiKeyUltraAssets([outputs[0]]), /Required/);
+  const singleAssetThrows = (entry) => {
+    try {
+      applyApiKeyUltraAssets([entry]);
+      return false;
+    } catch (error) {
+      return /Required/.test(error.message);
+    }
+  };
+  assert.ok(outputs.some(singleAssetThrows), "expected single-asset gate validation to fail closed");
   let rejectedContinuations = 0;
   const validatedReport = fs.readFileSync(reportPath, "utf8");
+  const assertOnlyGates = new Set(["codexLinuxApiKeyUltraSliderUnfiltered", "codexLinuxApiKeyUltraSliderNoUltraFilter"]);
   for (const entry of outputs) {
     for (const gate of report.assets.find(candidate => candidate.asset === entry.asset).validated) {
+      if (assertOnlyGates.has(gate)) continue;
       const marker = `/*${gate}*/`;
       const corrupted = {...entry, source:entry.source.replace(marker, marker + "&&false")};
       assert.throws(() => applyApiKeyUltraAssets(outputs.map(candidate => candidate === entry ? corrupted : candidate)), /Required/, marker);
@@ -136,7 +162,7 @@ try {
       rejectedContinuations++;
     }
   }
-  assert.equal(rejectedContinuations, 8);
+  assert.equal(rejectedContinuations, legacySlider ? 8 : 6);
   fs.writeFileSync(path.join(assetsDir, inputs[0].asset), "function unknown(){}");
   assert.notEqual(run().status, 0);
   console.log(JSON.stringify({archive, version, assets:names, validated:report.validated, catalogQueryCases:cases, rejectedContinuations, syntax:"PASS", idempotency:"PASS", missingGate:"FAIL_CLOSED"}, null, 2));

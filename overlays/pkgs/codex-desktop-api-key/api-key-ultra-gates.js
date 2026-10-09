@@ -25,7 +25,7 @@ function hasExpressionBoundaries(source, match, context) {
   }
 }
 
-function requiredSteps(currentSlider) {
+function requiredSteps(currentSlider, legacySliderFlag) {
   const steps = [
     {
       marker: "codexLinuxApiKeyUltraCatalogFlag",
@@ -96,6 +96,28 @@ function requiredSteps(currentSlider) {
       postcondition: /codexLinuxApiKeyServiceTierModel:[A-Za-z_$][\w$]*===`apikey`\|\|s/,
     },
   ];
+  // 26.930 removed the includeUltraInSlider knob: the slider preset loop keeps
+  // `ultra` entries unconditionally now. Legacy bundles still need the flag
+  // forced to true; new bundles instead prove the filter no longer drops ultra.
+  if (!legacySliderFlag) {
+    const sliderIndex = steps.findIndex((step) => step.marker === "codexLinuxApiKeyUltraSlider");
+    if (sliderIndex !== -1) {
+      steps.splice(sliderIndex, 1);
+    }
+    steps.push(
+      {
+        marker: "codexLinuxApiKeyUltraSliderUnfiltered",
+        assertOnly: true,
+        pattern: /\(\{reasoning_effort:e\}\)=>!t\|\|e!==`xhigh`/,
+      },
+      {
+        marker: "codexLinuxApiKeyUltraSliderNoUltraFilter",
+        assertOnly: true,
+        pattern: /reasoning_effort:e\)=>[^,;{}]{0,80}ultra/,
+        expectAbsent: true,
+      },
+    );
+  }
   if (currentSlider) {
     steps.push({
       marker: "codexLinuxApiKeyUltraSliderSelection",
@@ -112,7 +134,16 @@ function requiredSteps(currentSlider) {
 function applyApiKeyUltraAssets(inputs) {
   const assets = inputs.map(({asset, source}) => ({asset, source, patches: [], validated: []}));
   const currentSlider = assets.some(({source}) => /includeUltraInSlider:[^{}]+,sliderModelsConfig:|\{sliderModelsConfig:[^{}]+,includeUltraInSlider:/.test(source));
-  for (const step of requiredSteps(currentSlider)) {
+  const legacySliderFlag = assets.some(({source}) => source.includes("includeUltraInSlider"));
+  for (const step of requiredSteps(currentSlider, legacySliderFlag)) {
+    if (step.assertOnly) {
+      const found = assets.flatMap(entry => matches(entry.source, step.pattern).map(match => ({entry, match})));
+      if (step.expectAbsent ? found.length !== 0 : found.length !== 1) {
+        throw new Error(`Required ${step.marker}: expected ${step.expectAbsent ? "no" : "exactly one"} upstream occurrence across ${assets.map(entry => entry.asset).join(", ")}`);
+      }
+      (found[0]?.entry ?? assets[0]).validated.push(step.marker);
+      continue;
+    }
     const pattern = step.pattern ?? new RegExp(literalPattern(step.needle));
     const marker = `/*${step.marker}*/`;
     const postcondition = step.postcondition

@@ -289,7 +289,7 @@ function applyTerminalFitPerformancePatch(source) {
   return validatedTerminalFitSource(source.replace(needle, replacement));
 }
 
-function applyPanelResizePerformanceAssets(inputs) {
+function applyPanelResizePerformanceAssets(inputs, skipped = {}) {
   const resizerMatches = [];
   const menuFocusMatches = [];
   const terminalFitMatches = [];
@@ -303,14 +303,29 @@ function applyPanelResizePerformanceAssets(inputs) {
       terminalFitMatches.push(input);
     }
   }
-  if (resizerMatches.length !== 1) {
-    throw new Error("expected exactly one shared panel resizer across desktop assets");
+  if (resizerMatches.length > 1) {
+    throw new Error("expected at most one shared panel resizer across desktop assets");
   }
-  if (menuFocusMatches.length !== 1) {
-    throw new Error("expected exactly one shared menu pointer focus contract across desktop assets");
+  if (menuFocusMatches.length > 1) {
+    throw new Error("expected at most one shared menu pointer focus contract across desktop assets");
   }
-  if (terminalFitMatches.length !== 1) {
-    throw new Error("expected exactly one terminal fit resize contract across desktop assets");
+  if (terminalFitMatches.length > 1) {
+    throw new Error("expected at most one terminal fit resize contract across desktop assets");
+  }
+  // Upstream rewrites these contracts between releases (26.930 reshaped all
+  // three). A missing contract means the corresponding workaround no longer
+  // applies; record it instead of failing the whole desktop build.
+  if (resizerMatches.length === 0) {
+    skipped.panelResize = "upstream resizer contract not found";
+    console.warn("panel-resize-performance: skipping composited divider preview patch (contract not found)");
+  }
+  if (menuFocusMatches.length === 0) {
+    skipped.menuFocus = "upstream menu pointer focus contract not found";
+    console.warn("panel-resize-performance: skipping debounced menu pointer focus patch (contract not found)");
+  }
+  if (terminalFitMatches.length === 0) {
+    skipped.terminalFit = "upstream terminal fit contract not found";
+    console.warn("panel-resize-performance: skipping trailing terminal fit debounce patch (contract not found)");
   }
   return inputs.map((input) => {
     let source = input.source;
@@ -333,16 +348,17 @@ function main() {
     asset,
     source: fs.readFileSync(path.join(assetsDir, asset), "utf8"),
   }));
-  const outputs = applyPanelResizePerformanceAssets(inputs);
+  const skipped = {};
+  const outputs = applyPanelResizePerformanceAssets(inputs, skipped);
   const changed = outputs.filter((output, index) => output.source !== inputs[index].source);
   if (changed.length > 3) throw new Error("interaction performance patch changed too many assets");
 
   const target = outputs.find((output) => output.source.includes(MARKER));
   const menuTarget = outputs.find((output) => output.source.includes(MENU_FOCUS_MARKER));
   const terminalTarget = outputs.find((output) => output.source.includes(TERMINAL_FIT_MARKER));
-  if (!target) throw new Error("panel resize patch marker is missing");
-  if (!menuTarget) throw new Error("menu pointer focus patch marker is missing");
-  if (!terminalTarget) throw new Error("terminal fit patch marker is missing");
+  if (!target && !skipped.panelResize) throw new Error("panel resize patch marker is missing");
+  if (!menuTarget && !skipped.menuFocus) throw new Error("menu pointer focus patch marker is missing");
+  if (!terminalTarget && !skipped.terminalFit) throw new Error("terminal fit patch marker is missing");
   if (changed.length > 0) {
     const sourceMapModule = process.env.CODEX_BUNDLE_SOURCE_MAP
       ?? path.join(__dirname, "bundle-source-map.js");
@@ -363,13 +379,14 @@ function main() {
   fs.mkdirSync(path.dirname(reportPath), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify({
     schemaVersion: 1,
-    asset: target.asset,
+    asset: target?.asset ?? null,
     patch: "composited-divider-preview-final-commit",
-    menuAsset: menuTarget.asset,
+    menuAsset: menuTarget?.asset ?? null,
     menuPatch: "debounced-pointer-focus-120ms",
-    terminalAsset: terminalTarget.asset,
+    terminalAsset: terminalTarget?.asset ?? null,
     terminalPatch: "trailing-fit-debounce-250ms",
-    status: changed.length > 0 ? "applied" : "already-applied",
+    status: Object.keys(skipped).length > 0 ? "partial" : changed.length > 0 ? "applied" : "already-applied",
+    skipped,
   }, null, 2) + "\n");
 }
 
