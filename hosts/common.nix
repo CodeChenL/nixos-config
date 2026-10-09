@@ -68,7 +68,6 @@ in
       ];
       substituters = [
         "https://mirrors.ustc.edu.cn/nix-channels/store?priority=10"
-        "https://mirror.sjtu.edu.cn/nix-channels/store?priority=20"
         "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store?priority=30"
         "https://nix-community.cachix.org?priority=50"
         "https://cache.numtide.com?priority=60"

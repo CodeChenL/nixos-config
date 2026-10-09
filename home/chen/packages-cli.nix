@@ -13,7 +13,10 @@
   home.packages = with pkgs; [
     # ── AI CLI ──────────────────────────────────────────────────
     radxa-linkr-debuggerctl
-    unstable.opencode
+    # opencode v2（@opencode/cli 2.0.26）：bin/opencode + bin/opencode2。
+    # v1 的 unstable.opencode 与之 bin/opencode 冲突，必须替换而非并存。
+    opencode-v2
+    # 桌面 GUI 仍是独立 v1 产品线（bin/opencode-desktop，无冲突）。
     unstable.opencode-desktop
     unstable.codex
     pkgs.llm-agents.dsh

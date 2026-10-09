@@ -20,7 +20,7 @@
 { config, inputs, lib, pkgs, ... }:
 
 let
-  enableOmo = true;
+  enableOmo = false;
   # Ponytail 插件控制开关：true 表示安装插件并在激活时重算 hook trust；
   # 改为 false 后下次 rebuild 会从 config.toml 移除 ponytail 段。
   enablePonytail = true;
