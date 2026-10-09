@@ -219,6 +219,8 @@ in
   kiro-rs = import ./pkgs/kiro-rs { inherit inputs final prev; };
   mixed-proxy-rs = import ./pkgs/mixed-proxy-rs { inherit inputs final prev; };
   opencode-mem = import ./pkgs/opencode-mem { inherit inputs final prev; };
-  oh-my-openagent = import ./pkgs/oh-my-openagent { inherit inputs final prev; };
+  opencode-approval = import ./pkgs/opencode-approval { inherit prev; };
+  opencode-v2 = import ./pkgs/opencode-v2 { inherit prev; };
+  oh-my-opencode-slim = import ./pkgs/oh-my-opencode-slim { inherit inputs final prev; };
   zeron = import ./pkgs/zeron { inherit inputs final prev; };
 }
