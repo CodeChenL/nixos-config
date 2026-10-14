@@ -70,7 +70,7 @@ ss -lntp | grep 8080
 `sub2api.nix` 模块默认会添加本机 PostgreSQL、Redis、服务账号和防火端口 8080；
 Aliyun 保持该默认行为并额外开放 `5432`、`6379`。ChenIdeaCentre 已设置
 `services.sub2api.enable = false`，不再运行本地 Sub2API；客户端使用
-`https://api.chenjaly.cn/v1`。原有 `externalDatabase = true` 配置仅在重新启用服务时生效。
+`https://api.nenorei.cn/v1`。原有 `externalDatabase = true` 配置仅在重新启用服务时生效。
 
 **历史数据库关系**：迁移时 ChenIdeaCentre 和 ChenAliyun 曾共用同一套后端：
 
@@ -110,25 +110,28 @@ PGPASSWORD="$DBPW" pg_dump \
 
 | HTTPS 入口 | 后端 |
 | --- | --- |
-| `https://api.chenjaly.cn/` | Sub2API `127.0.0.1:8080` |
-| `https://api.chenjaly.cn/kiro/v1/` | kiro-rs `127.0.0.1:8990/v1/` |
-| `https://api.chenjaly.cn/kiro/admin` | kiro-rs 管理页面 |
+| `https://api.nenorei.cn/` | Sub2API `127.0.0.1:8080` |
+| `https://api.nenorei.cn/kiro/v1/` | kiro-rs `127.0.0.1:8990/v1/` |
+| `https://api.nenorei.cn/kiro/admin` | kiro-rs 管理页面 |
 
 `/kiro/` 转发时移除前缀；管理页面的资源地址和管理 API 地址在 nginx 层改写，
 根路径 `/admin` 仍属于 Sub2API。升级 kiro-rs 后应复查管理页面和 JS 的绝对路径。
 两个后端的流式响应均禁用 nginx 代理缓冲。
 
-证书包含 `chenjaly.cn` 和 `*.chenjaly.cn`，以后新增一级子域的虚拟主机使用
-`useACMEHost = "chenjaly.cn"` 即可复用。泛域名不覆盖二级以上子域。
+证书包含 `nenorei.cn` 和 `*.nenorei.cn`，以后新增一级子域的虚拟主机使用
+`useACMEHost = "nenorei.cn"` 即可复用。泛域名不覆盖二级以上子域。
 证书不会自动添加新服务的 DNS 记录或 nginx 路由。
+
+> 2026-10-14：主域名由 `chenjaly.cn` 迁移至 `nenorei.cn`（旧域名已转出）。ACME
+> 委派、Knot 区域、nginx/mixed-proxy 证书与客户端 API 地址均已切换到新域名。
 
 阿里云 DNS 中保留以下一次性配置：
 
 | 主机记录 | 类型 | 值 |
 | --- | --- | --- |
 | `acme-ns` | A | `47.254.74.103` |
-| `acme` | NS | `acme-ns.chenjaly.cn` |
-| `_acme-challenge` | CNAME | `acme.chenjaly.cn` |
+| `acme` | NS | `acme-ns.nenorei.cn` |
+| `_acme-challenge` | CNAME | `acme.nenorei.cn` |
 | `api` | A | `47.254.74.103` |
 
 云端防火墙需允许公网 TCP/UDP `53`、TCP `443`；TCP `80` 用于 HTTP 跳转。
@@ -142,14 +145,14 @@ TSIG 密钥不要在 Knot 正在运行时直接删除，否则客户端与服务
 首次部署和续签后检查：
 
 ```sh
-systemctl status knot nginx acme-order-renew-chenjaly.cn.service
-systemctl list-timers acme-renew-chenjaly.cn.timer
-journalctl -u acme-order-renew-chenjaly.cn.service -n 100
-dig @47.254.74.103 acme.chenjaly.cn SOA
-dig +tcp @47.254.74.103 acme.chenjaly.cn SOA
-openssl x509 -in /var/lib/acme/chenjaly.cn/fullchain.pem -noout -dates -ext subjectAltName
-curl -I https://api.chenjaly.cn/
-curl -I https://api.chenjaly.cn/kiro/admin
+systemctl status knot nginx acme-order-renew-nenorei.cn.service
+systemctl list-timers acme-renew-nenorei.cn.timer
+journalctl -u acme-order-renew-nenorei.cn.service -n 100
+dig @47.254.74.103 acme.nenorei.cn SOA
+dig +tcp @47.254.74.103 acme.nenorei.cn SOA
+openssl x509 -in /var/lib/acme/nenorei.cn/fullchain.pem -noout -dates -ext subjectAltName
+curl -I https://api.nenorei.cn/
+curl -I https://api.nenorei.cn/kiro/admin
 ```
 
 `security.acme` 的每日 timer 自动执行续签检查，成功更新证书后重新加载 nginx。
@@ -161,10 +164,10 @@ curl -I https://api.chenjaly.cn/kiro/admin
 
 | 客户端代理地址 | 协议 |
 | --- | --- |
-| `https://api.chenjaly.cn:8443` | TLS 加密的 HTTP 代理，支持 HTTP 转发和 CONNECT，仅承载 TCP |
-| `socks5h://api.chenjaly.cn:8443` | 裸 SOCKS5，支持用户名/密码认证、TCP CONNECT 和标准 UDP ASSOCIATE |
+| `https://api.nenorei.cn:8443` | TLS 加密的 HTTP 代理，支持 HTTP 转发和 CONNECT，仅承载 TCP |
+| `socks5h://api.nenorei.cn:8443` | 裸 SOCKS5，支持用户名/密码认证、TCP CONNECT 和标准 UDP ASSOCIATE |
 
-这些是正向代理地址，API baseURL 仍是 `https://api.chenjaly.cn/v1`，
+这些是正向代理地址，API baseURL 仍是 `https://api.nenorei.cn/v1`，
 现有 `443` 端口上的 nginx API 与管理入口不变。
 OpenCode、Codex 和 DSH 的声明式 API 配置均已迁移到该 HTTPS 地址；
 应用配置更新后应重启对应客户端，OpenCode 不会热加载 provider 配置。
@@ -188,8 +191,8 @@ ACME 证书，并设置 `NoNewPrivileges = false`，让 `pam_unix` 能借助 set
 {
   "listen": "0.0.0.0:8443",
   "tls": {
-    "certFile": "/var/lib/acme/chenjaly.cn/fullchain.pem",
-    "keyFile": "/var/lib/acme/chenjaly.cn/key.pem"
+    "certFile": "/var/lib/acme/nenorei.cn/fullchain.pem",
+    "keyFile": "/var/lib/acme/nenorei.cn/key.pem"
   },
   "udp": {
     "publicAddress": "47.254.74.103",
@@ -227,7 +230,7 @@ loopback 实测）。服务单元 `xray-vless.service`，配置由 `hosts/Aliyun
 
 - 客户端（mihomo/clash-verge-rev）：`home/chen/default.nix` 全局脚本已注入 `Aliyun-VLESS`
   条目（UUID/公钥/short-id 运行时从 `secrets/vless/` 注入）；
-- 其他设备手工配置：server=`api.chenjaly.cn` port=8444，uuid 见 `secrets/vless/uuid`，
+- 其他设备手工配置：server=`api.nenorei.cn` port=8444，uuid 见 `secrets/vless/uuid`，
   flow=`xtls-rprx-vision`，reality public-key 见 `secrets/vless/reality-public.key`，
   short-id 见 `secrets/vless/short-id`，serverName=`www.apple.com`，fingerprint=`chrome`；
 - 密钥两端分别部署（本机与服务器的 `secrets/vless/` 内容须一致）；
@@ -267,13 +270,13 @@ ss -lunp | grep mixed-proxy
 密码不会出现在命令行参数或 shell 历史里。
 
 ```sh
-curl --noproxy '' --proxy https://api.chenjaly.cn:8443 \
+curl --noproxy '' --proxy https://api.nenorei.cn:8443 \
   --proxy-user chen https://example.com/
-curl --noproxy '' --proxy socks5h://api.chenjaly.cn:8443 \
+curl --noproxy '' --proxy socks5h://api.nenorei.cn:8443 \
   --proxy-user chen https://example.com/
 ```
 
-HTTPS 代理复用 `chenjaly.cn` 的泛域名证书。ACME 成功更新后重启 `mixed-proxy`
+HTTPS 代理复用 `nenorei.cn` 的泛域名证书。ACME 成功更新后重启 `mixed-proxy`
 读取新证书，已有代理隧道（含 UDP 关联）会断开，客户端需要重连。代理密码就是
 `chen` 的系统账户密码，普通服务重启后不变，只在 NixOS 账户配置变更并重新部署时更新。
 
