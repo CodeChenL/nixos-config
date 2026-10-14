@@ -26,16 +26,16 @@ let
       "IP-CIDR6,fe80::/10,DIRECT,no-resolve",
       "IP-CIDR6,::1/128,DIRECT,no-resolve",
       // Aliyun / Sub2API 必须直连，避免 Clash 海外代理返回 403/timeout
-      "DOMAIN,chenjaly.cn,DIRECT",
-      "DOMAIN-SUFFIX,chenjaly.cn,DIRECT",
+      "DOMAIN,nenorei.cn,DIRECT",
+      "DOMAIN-SUFFIX,nenorei.cn,DIRECT",
       "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
       "DOMAIN-KEYWORD,discord,Proxy"
     ];
 
     const prependProxy = [
       { name: "SOCKS5-Proxy", type: "socks5", server: "192.168.2.3", port: 7891, udp: true },
-      { name: "Aliyun-SOCKS5", type: "socks5", server: "api.chenjaly.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true },
-      { name: "Aliyun-VLESS", type: "vless", server: "api.chenjaly.cn", port: 8444, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } }
+      { name: "Aliyun-SOCKS5", type: "socks5", server: "api.nenorei.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true },
+      { name: "Aliyun-VLESS", type: "vless", server: "api.nenorei.cn", port: 8444, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } }
     ];
 
     const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-VLESS"];
@@ -228,8 +228,8 @@ in
   # Clash Verge 当前激活 profile 使用的 script。
   xdg.dataFile."io.github.clash-verge-rev.clash-verge-rev/profiles/srXJ1OAcZkXf.js".text = ''
     const prependRules = [
-      "DOMAIN,chenjaly.cn,DIRECT",
-      "DOMAIN-SUFFIX,chenjaly.cn,DIRECT",
+      "DOMAIN,nenorei.cn,DIRECT",
+      "DOMAIN-SUFFIX,nenorei.cn,DIRECT",
       "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
     ];
 

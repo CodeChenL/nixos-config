@@ -156,7 +156,7 @@ in
       providers = {
         "openai" = {
           settings = {
-            baseURL = "https://api.chenjaly.cn/v1";
+            baseURL = "https://api.nenorei.cn/v1";
             headerTimeout = 60000;
             chunkTimeout = 60000;
           };
