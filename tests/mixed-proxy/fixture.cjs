@@ -156,7 +156,7 @@ function createFixture(password) {
 
   async function connection(port, { secure = false, localAddress = '127.0.0.1' } = {}) {
     const options = { host: '127.0.0.1', port, localAddress, signal };
-    const socket = track(secure ? tls.connect({ ...options, servername: 'api.chenjaly.cn',
+    const socket = track(secure ? tls.connect({ ...options, servername: 'api.nenorei.cn',
       ca: fs.readFileSync(path.join(directory, 'proxy.pem')) }) : net.createConnection(options));
     socket.setNoDelay(true);
     socket.setTimeout(2000, () => socket.destroy(new Error('连接响应超过 2 秒')));

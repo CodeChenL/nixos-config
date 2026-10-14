@@ -3,7 +3,7 @@
 let
   inherit (pkgs) lib;
   python = pkgs.python3;
-  domain = "chenjaly.cn";
+  domain = "nenorei.cn";
   fixturePassword = "proxy-fixture-only";
   firstUdpPort = 20000;
   lastUdpPort = 20001;
@@ -140,7 +140,7 @@ let
     def fingerprint(proxy: str) -> None:
         context = ssl.create_default_context(cafile="/run/proxy-ca.pem")
         with socket.create_connection((proxy, 8443), timeout=20) as raw:
-            with context.wrap_socket(raw, server_hostname="api.chenjaly.cn") as connection:
+            with context.wrap_socket(raw, server_hostname="api.nenorei.cn") as connection:
                 certificate = connection.getpeercert(binary_form=True)
                 assert certificate is not None
                 print(hashlib.sha256(certificate).hexdigest())
@@ -148,7 +148,7 @@ let
     def http_auth(proxy: str, credentials: Credentials | None, tunnel: bool = False) -> int:
         context = ssl.create_default_context(cafile="/run/proxy-ca.pem")
         with socket.create_connection((proxy, 8443), timeout=20) as raw:
-            with context.wrap_socket(raw, server_hostname="api.chenjaly.cn") as connection:
+            with context.wrap_socket(raw, server_hostname="api.nenorei.cn") as connection:
                 header = ""
                 if credentials is not None:
                     token = base64.b64encode(
@@ -222,15 +222,15 @@ let
                            "--noproxy", "", "--connect-timeout", "3", "--max-time", "20",
                            "--proxy-user", f"chen:{PASSWORD}", "--cacert", "/run/target-ca.pem"]
                 if proxy_scheme == "https":
-                    command += ["--proxy", "https://api.chenjaly.cn:8443",
-                                "--resolve", f"api.chenjaly.cn:8443:{proxy}",
+                    command += ["--proxy", "https://api.nenorei.cn:8443",
+                                "--resolve", f"api.nenorei.cn:8443:{proxy}",
                                 "--proxy-cacert", "/run/proxy-ca.pem"]
                 else:
                     command += ["--proxy", f"socks5h://{proxy}:8443", "--socks5-basic"]
                 command += [f"{target_scheme}://echo.test:{port}/transfer-fixture"]
                 result = subprocess.run(command, capture_output=True, text=True, check=True)
                 assert result.stdout == "mixed-proxy-vm-target\n"
-        for name, trust in (("api.chenjaly.cn", False), ("wrong-proxy.test", True)):
+        for name, trust in (("api.nenorei.cn", False), ("wrong-proxy.test", True)):
             command = ["curl", "--disable", "--silent", "--show-error", "--noproxy", "",
                        "--connect-timeout", "3", "--max-time", "20", "--proxy-user", f"chen:{PASSWORD}",
                        "--proxy", f"https://{name}:8443", "--resolve", f"{name}:8443:{proxy}"]
@@ -494,7 +494,7 @@ pkgs.testers.runNixOSTest {
       "mixed_proxy_pam_bounds.py".mode = "0444";
     };
     networking.hosts = {
-      ${nodes.proxy.networking.primaryIPAddress} = [ "api.chenjaly.cn" ];
+      ${nodes.proxy.networking.primaryIPAddress} = [ "api.nenorei.cn" ];
       ${nodes.target.networking.primaryIPAddress} = [ "echo.test" ];
     };
     virtualisation.memorySize = 768;

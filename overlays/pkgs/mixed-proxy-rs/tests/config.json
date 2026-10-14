@@ -1,8 +1,8 @@
 {
   "listen": "0.0.0.0:8443",
   "tls": {
-    "certFile": "/var/lib/acme/chenjaly.cn/fullchain.pem",
-    "keyFile": "/var/lib/acme/chenjaly.cn/key.pem"
+    "certFile": "/var/lib/acme/nenorei.cn/fullchain.pem",
+    "keyFile": "/var/lib/acme/nenorei.cn/key.pem"
   },
   "udp": {
     "publicAddress": "47.254.74.103",

@@ -7,8 +7,8 @@ const { X509Certificate } = require('node:crypto');
 
 async function certificate(fixture, name, serial) {
   const result = await fixture.command('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-days', '1', '-set_serial', String(serial), '-subj', '/CN=api.chenjaly.cn',
-    '-addext', 'subjectAltName=DNS:api.chenjaly.cn,IP:127.0.0.1',
+    '-days', '1', '-set_serial', String(serial), '-subj', '/CN=api.nenorei.cn',
+    '-addext', 'subjectAltName=DNS:api.nenorei.cn,IP:127.0.0.1',
     '-keyout', path.join(fixture.directory, `${name}.key`), '-out', path.join(fixture.directory, `${name}.pem`)]);
   assert.equal(result.code, 0, result.stderr);
   fs.chmodSync(path.join(fixture.directory, `${name}.key`), 0o600);

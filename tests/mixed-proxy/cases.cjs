@@ -20,8 +20,8 @@ function createCurl(fixture, endpoints, ports) {
     }
     const result = await fixture.command('curl', ['--disable', '--silent', '--show-error',
       '--noproxy', '', '--connect-timeout', '12', '--max-time', '15',
-      '--proxy', proxy === 'https' ? `https://api.chenjaly.cn:${ports.front}` : `socks5h://127.0.0.1:${ports.front}`,
-      ...(proxy === 'https' ? ['--resolve', `api.chenjaly.cn:${ports.front}:127.0.0.1`,
+      '--proxy', proxy === 'https' ? `https://api.nenorei.cn:${ports.front}` : `socks5h://127.0.0.1:${ports.front}`,
+      ...(proxy === 'https' ? ['--resolve', `api.nenorei.cn:${ports.front}:127.0.0.1`,
         '--proxy-cacert', path.join(fixture.directory, 'proxy.pem')] : ['--socks5-basic']),
       '--cacert', path.join(fixture.directory, 'target.pem'), '--write-out', '\n%{http_code} %{http_connect}',
       ...(input === undefined ? [] : ['--config', '-']), ...options,
@@ -80,7 +80,7 @@ function createHttpClient(fixture, endpoints, ports, localAddress = '127.0.0.1')
   async function request({ headers = {}, method = 'GET', chunks = [], pathname = '/mixed-proxy-fixture' } = {}) {
     let connection;
     const outgoing = https.request({ hostname: '127.0.0.1', port: ports.front,
-      servername: 'api.chenjaly.cn', ca: fs.readFileSync(path.join(fixture.directory, 'proxy.pem')),
+      servername: 'api.nenorei.cn', ca: fs.readFileSync(path.join(fixture.directory, 'proxy.pem')),
       agent, method, path: `http://127.0.0.1:${endpoints.httpPort}${pathname}`,
       headers: { Host: `127.0.0.1:${endpoints.httpPort}`, ...headers }, signal: fixture.signal });
     outgoing.on('socket', (socket) => { connection = socket; });
