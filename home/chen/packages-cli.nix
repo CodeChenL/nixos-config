@@ -13,6 +13,7 @@
   home.packages = with pkgs; [
     # ── AI CLI ──────────────────────────────────────────────────
     radxa-linkr-debuggerctl
+    rea
     # opencode v2（@opencode/cli 2.0.26）：bin/opencode + bin/opencode2。
     # v1 的 unstable.opencode 与之 bin/opencode 冲突，必须替换而非并存。
     opencode-v2

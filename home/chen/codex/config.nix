@@ -132,6 +132,12 @@ let
       startup_timeout_sec = 120;
       env = { RUST_LOG = "info"; };
     };
+    mcp_servers.rea = {
+      command = "${pkgs.rea}/bin/rea";
+      args = [ "mcp" ];
+      startup_timeout_sec = 30;
+      tool_timeout_sec = 600;
+    };
   };
 
   codexConfigTemplate = pkgs.concatText "codex-config.toml" [

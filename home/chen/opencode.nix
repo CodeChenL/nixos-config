@@ -142,7 +142,16 @@ in
               execution = 300000;
             };
           };
-        });
+        }) // {
+          rea = {
+            type = "local";
+            command = [ "${pkgs.rea}/bin/rea" "mcp" ];
+            timeout = {
+              startup = 30000;
+              execution = 600000;
+            };
+          };
+        };
       };
       providers = {
         "openai" = {

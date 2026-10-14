@@ -16,6 +16,14 @@ let
     then import ./pkgs/konnect { inherit inputs final prev; }
     else null;
 
+  rea = import ./pkgs/rea {
+    inherit final prev;
+    ghidra =
+      if prev.stdenv.hostPlatform.system == "x86_64-linux"
+      then final.unstable.ghidra
+      else null;
+  };
+
   ghidraMcpPackages =
     if prev.stdenv.hostPlatform.system == "x86_64-linux"
     then import ./pkgs/ghidra-mcp { inherit inputs final prev; }
@@ -45,6 +53,7 @@ let
     ${final.lib.optionalString (konnect != null) ''
       cp -r "${konnect}/share/agents/skills/." "$out/"
     ''}
+    cp -r ${final.rea.skills}/. "$out/"
   '';
 
   ngrLibraries = final.lib.unique (with final; [
@@ -209,7 +218,7 @@ in
   ghidra-mcp-bridge = if ghidraMcpPackages != null then ghidraMcpPackages.bridge else null;
   ghidra-mcp-extension = if ghidraMcpPackages != null then ghidraMcpPackages.extension else null;
   ghidra-with-mcp = if ghidraMcpPackages != null then ghidraMcpPackages.ghidraWithExtension else null;
-  inherit konnect konnect-addon kicad;
+  inherit konnect konnect-addon kicad rea;
   llama-cpp-full = import ./pkgs/llama-cpp-full { inherit inputs final prev; };
   natfrp-service = import ./pkgs/natfrp-service { inherit inputs final prev; };
   pgyvisitor = import ./pkgs/pgyvisitor { inherit inputs final prev; };
