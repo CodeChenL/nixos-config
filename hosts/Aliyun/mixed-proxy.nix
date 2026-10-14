@@ -7,7 +7,7 @@
 
 let
   cfg = config.services.mixed-proxy;
-  acmeDomain = "chenjaly.cn";
+  acmeDomain = "nenorei.cn";
   certDirectory = config.security.acme.certs.${acmeDomain}.directory;
   configFile = (pkgs.formats.json { }).generate "mixed-proxy.json" {
     listen = "0.0.0.0:8443";

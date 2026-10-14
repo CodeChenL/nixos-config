@@ -1,8 +1,8 @@
 { pkgs, ... }:
 
 let
-  acmeDomain = "chenjaly.cn";
-  dnsZone = "acme.chenjaly.cn";
+  acmeDomain = "nenorei.cn";
+  dnsZone = "acme.nenorei.cn";
   tsigName = "acme-update";
   stateDir = "/var/lib/acme-dns";
   tsigSecretFile = "${stateDir}/tsig-secret";
@@ -12,10 +12,10 @@ let
   zoneStore = pkgs.writeTextDir "${dnsZone}.zone" ''
     $ORIGIN ${dnsZone}.
     $TTL 300
-    @ IN SOA acme-ns.chenjaly.cn. chenjiali.radxa.com. (
-      2026093001 3600 600 604800 300
+    @ IN SOA acme-ns.nenorei.cn. chenjiali.radxa.com. (
+      2026101401 3600 600 604800 300
     )
-    @ IN NS acme-ns.chenjaly.cn.
+    @ IN NS acme-ns.nenorei.cn.
   '';
 
   setupScript = pkgs.writeShellScript "acme-dns-setup" ''
