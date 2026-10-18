@@ -17,7 +17,7 @@
 # 能直接构建（nixpkgs 的 pkgs 集合里没有 prev 属性）；overlay 里使用时请显式传
 # `import ./pkgs/opencode-approval { inherit prev; }`。
 let
-  version = "0.7.9";
+  version = "0.7.13";
 in
 prev.runCommand "opencode-approval-${version}.tgz"
   {
@@ -35,12 +35,13 @@ prev.runCommand "opencode-approval-${version}.tgz"
 
     # 构建期校验：语法检查 + 全量单测（目录形式 node --test 不认，用 glob）
     node --check plugin/index.js
+    node --check plugin/authorization-evidence.js
     node --check plugin/tui.js
     node --check plugin/render-lib.js
     node --test "tests/*.test.mjs"
 
     mkdir package
-    cp plugin/package.json plugin/index.js plugin/tui.js plugin/render-lib.js README.md package/
+    cp plugin/package.json plugin/index.js plugin/authorization-evidence.js plugin/tui.js plugin/render-lib.js README.md package/
 
     tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - package | gzip -n > $out
   ''

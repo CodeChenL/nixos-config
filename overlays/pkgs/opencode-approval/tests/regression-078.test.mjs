@@ -247,6 +247,7 @@ test("所有块 allow 才放行，风险取最大，usage 按块累计", async (
   const count = buildActionView(snapshot(input.metadata.patch)).chunks.length;
   const { handler, calls, ctx } = await loadCustom({
     review: [ALLOW, verdict("high"), verdict("medium")],
+    sessionMessages: { ses_test: [{ type: "user", text: "允许修改该文件全部内容。" }] },
     reviewUsage: { prompt_tokens: 10, completion_tokens: 2 },
   });
   await handler(input);

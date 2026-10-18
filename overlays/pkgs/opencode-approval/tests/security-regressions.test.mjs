@@ -5,7 +5,7 @@ import { test } from "node:test";
 import plugin, { buildContextDigest, isHardAllowCommand } from "../plugin/index.js";
 import { baseInput, loadHandler, makeCtx } from "./helpers.mjs";
 
-const DENY = JSON.stringify({ risk_level: "high", outcome: "deny", rationale: "not authorized" });
+const DENY = JSON.stringify({ risk_level: "high", outcome: "deny", reason_code: "substantive_denial", rationale: "not authorized" });
 const ALLOW = JSON.stringify({ risk_level: "medium", outcome: "allow", rationale: "reviewed" });
 const user = (text) => ({ type: "user", text });
 const appeal = (calls, justification = "please reconsider", sessionID = "ses_test") =>
@@ -166,7 +166,7 @@ test("blocker 2：子会话任务与父用户只读/禁止发布约束同时进�
   for (const { prompt } of calls.generate) {
     assert.match(prompt, /\[agent task\] publish now/);
     assert.doesNotMatch(prompt, /\[user\] publish now/);
-    assert.match(prompt, /\[user\] 只读，禁止写入、禁止发布/);
+    assert.match(prompt, /"text":"只读，禁止写入、禁止发布".*"authority":"user-authorization"/);
     assert.match(prompt, /parent.session/);
     assert.match(prompt, /cannot.*alone|alone.*allow/);
     assert.match(prompt, /constraints/);
@@ -180,7 +180,7 @@ test("blocker 2：嵌套代理不把父代理任务升级为用户授权", async
   });
   await handler(write("+x", { sessionID: "child" }));
   assert.match(calls.generate[0].prompt, /\[agent task\] parent task/);
-  assert.match(calls.generate[0].prompt, /\[user\] read only/);
+  assert.match(calls.generate[0].prompt, /"text":"read only".*"authority":"user-authorization"/);
 });
 
 test("blocker 2：来源查询失败不把 user 任务当授权，固定前缀也进入审查 prompt", async () => {
@@ -301,7 +301,7 @@ test("blocker 4：Promise.all 双发复议只签发一次，并发重试只消�
   assert.equal(calls.generate.length, 2);
   await Promise.all([handler(write()), handler(write())]);
   assert.equal(calls.generate.length, 3, "只有一个重试跳过审查");
-  const consumed = calls.rpc.emitted.filter(({ data }) => data.rationale === "行政复议通过（一次性放行）");
+  const consumed = calls.rpc.emitted.filter(({ data }) => data.event === "grant_consumed");
   assert.equal(consumed.length, 1);
 });
 
@@ -332,7 +332,8 @@ test("blocker 4：首个 grant 消费后，慢的并发复议不能将它复活"
 });
 
 test("blocker 4：并发驳回 strikes 精确递增，到第三次后不再审查", async () => {
-  const { handler, calls } = await loadHandler({ review: [DENY], reviewDelayMs: 5 });
+  const { handler, calls } = await loadHandler({ review: [DENY], reviewDelayMs: 5,
+    sessionMessages: { ses_test: [{ type: "user", text: "禁止写操作。" }] } });
   await handler(write());
   const pair = await Promise.all([appeal(calls, "first"), appeal(calls, "second")]);
   assert.match(pair[0].content, /1\/3/);
@@ -415,9 +416,9 @@ test("minor 16：README 配置示例能 setup，所有谓词规则报错列出�
   }
 });
 
-test("发行元数据：package.json 与 default.nix 同步为 0.7.9", () => {
+test("发行元数据：package.json 与 default.nix 同步为 0.7.13", () => {
   const pkg = JSON.parse(fs.readFileSync(new URL("../plugin/package.json", import.meta.url), "utf8"));
   const nix = fs.readFileSync(new URL("../default.nix", import.meta.url), "utf8");
-  assert.equal(pkg.version, "0.7.9");
-  assert.match(nix, /version = "0\.7\.9";/);
+  assert.equal(pkg.version, "0.7.13");
+  assert.match(nix, /version = "0\.7\.13";/);
 });

@@ -216,7 +216,7 @@ test("major 6：消息事件立即失效上下文缓存（撤回授权进入下�
   messages.push(user("撤回授权：只读，禁止写入、禁止发布"));
   calls.emitEvent({ type: "session.inbox.delivered", data: { sessionID: "ses_test", inboxID: "ib1" } });
   await handler(baseInput({ resources: ["git push origin b"] }));
-  assert.equal(calls.sessionContext.length, 2, "事件到达后必须重取上下文");
+  assert.ok(calls.sessionContext.length >= 2, "事件到达时主动捕获，审查时也可重取上下文");
   assert.match(calls.generate[1].prompt, /撤回授权：只读，禁止写入、禁止发布/);
 });
 
@@ -231,7 +231,7 @@ test("major 6：无事件流时会话版本/消息计数纳入缓存键（追加
   await handler(baseInput({ resources: ["git push origin a"] }));
   messages.push(user("撤回授权：只读"));
   await handler(baseInput({ resources: ["git push origin b"] }));
-  assert.equal(calls.sessionContext.length, 2);
+  assert.equal(calls.sessionContext.length, 4, "两次准备与两次最终新鲜度核验");
   assert.match(calls.generate[1].prompt, /撤回授权：只读/);
 });
 
@@ -241,7 +241,7 @@ test("major 6：无任何版本信号时 TTL 显著缩短（缓存仍生效，�
   });
   await handler(baseInput({ resources: ["git push origin a"] }));
   await handler(baseInput({ resources: ["git push origin b"] }));
-  assert.equal(calls.sessionContext.length, 1, "短时间内仍命中缓存");
+  assert.equal(calls.sessionContext.length, 3, "准备阶段仍命中缓存，但 allow 前强制核验");
   const realNow = Date.now;
   try {
     Date.now = () => realNow() + 3_500;
@@ -249,7 +249,7 @@ test("major 6：无任何版本信号时 TTL 显著缩短（缓存仍生效，�
   } finally {
     Date.now = realNow;
   }
-  assert.equal(calls.sessionContext.length, 2, "降级 TTL（3s）过期后重取，不再是 30s");
+  assert.equal(calls.sessionContext.length, 5, "TTL（3s）过期后重新准备，再做最终新鲜度核验");
 });
 
 // ---------- major 7：超长动作 fail-closed ----------

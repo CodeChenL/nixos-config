@@ -271,7 +271,8 @@ test("同步未预期异常即使 onFailure=ask 也 deny，损坏输入不妨碍
     assert.match(input.message, new RegExp(`plugin internal error: ${property} broken`));
     assert.equal(entries(ctx).at(-1).layer, "failure");
     assert.equal(entries(ctx).at(-1).effect, "deny");
-    assert.equal(entries(ctx).at(-1).rationale, `plugin internal error: ${property} broken`);
+    assert.equal(entries(ctx).at(-1).resultReason, "plugin_internal_error");
+    assert.equal(entries(ctx).at(-1).rationale, "plugin_internal_error: 插件内部异常，已保守拒绝");
     assert.equal(calls.rpc.emitted.at(-1).data.layer, "failure");
   }
   assert.equal(calls.generate.length, 0);
@@ -283,21 +284,23 @@ test("异步审批队列中抛错被最外层捕获，队列不被污染，后�
   Object.defineProperty(input, "message", { get() { throw new Error("message broken"); } });
   await assert.doesNotReject(handler(input));
   assert.equal(input.effect, "deny");
-  assert.equal(entries(ctx).at(-1).rationale, "plugin internal error: message broken");
+  assert.equal(entries(ctx).at(-1).resultReason, "plugin_internal_error");
+  assert.doesNotMatch(entries(ctx).at(-1).rationale, /message broken/);
   const next = baseInput({ resources: ["npm run build"] });
   await handler(next);
   assert.equal(next.effect, "allow");
   assert.equal(calls.generate.length, 1);
 });
 
-test("异常对象也不可读时仍 deny 并记录 unknown error", async (t) => {
+test("异常对象也不可读时仍 deny，私有说明保留 unknown error、公共审计仅记录类型", async (t) => {
   const { handler, ctx } = await start(t);
   const input = baseInput();
   const error = { get message() { throw new Error("nested exception"); } };
   Object.defineProperty(input, "action", { get() { throw error; } });
   await assert.doesNotReject(handler(input));
   assert.equal(input.effect, "deny");
-  assert.equal(entries(ctx).at(-1).rationale, "plugin internal error: unknown error");
+  assert.match(input.message, /plugin internal error: unknown error/);
+  assert.equal(entries(ctx).at(-1).resultReason, "plugin_internal_error");
 });
 
 test("审计存储失效不能让内部异常逃逸或恢复 ask", async (t) => {
@@ -314,14 +317,16 @@ test("故障注入漏裁决分支：宿主初值 ask/allow/undefined 都不能�
   const source = fs.readFileSync(new URL("../plugin/index.js", import.meta.url), "utf8");
   const needle = "await modelReview(input);";
   assert.equal(source.split(needle).length, 2);
-  const mutated = source.replace(needle, "return; // injected undecided branch");
+  const mutated = source.replace(needle, "return; // injected undecided branch")
+    .replace('"./authorization-evidence.js"', JSON.stringify(new URL("../plugin/authorization-evidence.js", import.meta.url).href));
   const implementation = (await import(`data:text/javascript;base64,${Buffer.from(mutated).toString("base64")}`)).default;
   const { handler, ctx } = await start(t, { options: { onFailure: "ask" } }, null, implementation);
   for (const effect of ["ask", "allow", undefined]) {
     const input = baseInput({ effect, resources: ["npm run build"] });
     await handler(input);
     assert.equal(input.effect, "deny");
-    assert.equal(entries(ctx).at(-1).rationale, "evaluate returned undecided");
+    assert.match(input.message, /evaluate returned undecided/);
+    assert.equal(entries(ctx).at(-1).resultReason, "undecided");
     assert.equal(entries(ctx).at(-1).layer, "failure");
   }
 });
@@ -337,13 +342,13 @@ test("显式 ask 必须明确赋值并有 ask 审计，不能被未决策防御�
   }
 });
 
-test("发行版本与状态/异常语义文档一致：0.7.9，零依赖", () => {
+test("发行版本与状态/异常语义文档一致：0.7.13，零依赖", () => {
   const pkg = JSON.parse(fs.readFileSync(new URL("../plugin/package.json", import.meta.url), "utf8"));
   const nix = fs.readFileSync(new URL("../default.nix", import.meta.url), "utf8");
   const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
-  assert.equal(pkg.version, "0.7.9");
+  assert.equal(pkg.version, "0.7.13");
   assert.equal(pkg.dependencies, undefined);
-  assert.match(nix, /version = "0\.7\.9"/);
+  assert.match(nix, /version = "0\.7\.13"/);
   for (const term of ["statePath", "0600", "plugin internal error", "evaluate returned undecided", "plugin active"])
     assert.ok(readme.includes(term), term);
 });

@@ -30,6 +30,7 @@ export function makeCtx({
   sessionSignal = true,
   onGenerate = null,
   generateError = null,
+  storage = new Map(),
 } = {}) {
   const calls = {
     hooks: [],
@@ -54,6 +55,12 @@ export function makeCtx({
     rpc: { definition: null, handlers: null, disposed: false, emitted: [] },
   };
   let index = 0;
+  let messageSequence = 0;
+  const identities = new WeakMap();
+  const committed = (message) => {
+    if (!identities.has(message)) identities.set(message, { id: `msg_fixture_${String(++messageSequence).padStart(8, "0")}`, time: { created: Date.now() } });
+    return { ...identities.get(message), ...message };
+  };
   let mockSessionModel = null;
   const auditDir = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-approval-test-"));
 
@@ -106,8 +113,22 @@ export function makeCtx({
     eventStream.queue.push(event);
     for (const resolve of eventStream.waiters.splice(0)) resolve();
   };
+  calls.closeEvents = () => {
+    eventStream.closed = true;
+    for (const resolve of eventStream.waiters.splice(0)) resolve();
+  };
 
   const ctx = {
+    storage: storage && {
+      get: async (key) => clone(storage.get(key)),
+      set: async (key, value) => { storage.set(key, clone(value)); },
+      remove: async (key) => { storage.delete(key); },
+      scan: async ({ prefix = "", after, limit = 100 }) => {
+        const entries = [...storage].filter(([key]) => key.startsWith(prefix) && (!after || key > after))
+          .sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => ({ key, value: clone(value) }));
+        return { entries: entries.slice(0, limit), ...(entries.length > limit ? { next: entries[limit - 1].key } : {}) };
+      },
+    },
     options: {
       auditPath: path.join(auditDir, "approval-audit.jsonl"),
       statePath: path.join(auditDir, "approval-state.json"),
@@ -139,7 +160,7 @@ export function makeCtx({
           await new Promise((resolve) => setTimeout(resolve, contextDelayMs));
         }
         if (contextError) throw contextError;
-        return sessionMessages[sessionID] ?? [];
+        return (sessionMessages[sessionID] ?? []).map(committed);
       },
       get: async ({ sessionID }) => {
         calls.sessionGet.push(sessionID);
@@ -209,7 +230,7 @@ export function makeCtx({
                   return {
                     async next() {
                       for (;;) {
-                        if (signal?.aborted) return { done: true, value: undefined };
+                        if (signal?.aborted || eventStream.closed) return { done: true, value: undefined };
                         if (eventStream.queue.length > 0) {
                           return { done: false, value: eventStream.queue.shift() };
                         }

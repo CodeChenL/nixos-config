@@ -110,14 +110,14 @@ test("buildContextDigest：单条消息截断", () => {
   assert.ok(digest.endsWith("…"));
 });
 
-test("会话上下文：TTL 缓存——同一会话短时间两次裁决只取一次", async () => {
+test("会话上下文：准备阶段用 TTL 缓存，每次 allow 前仍强制刷新", async () => {
   const { handler, calls } = await loadHandler({
     review: [ALLOW_JSON],
     sessionMessages: { ses_test: [userMsg("hello")] },
   });
   await handler(baseInput({ resources: ["git push origin a"] }));
   await handler(baseInput({ resources: ["git push origin b"] }));
-  assert.equal(calls.sessionContext.length, 1);
+  assert.equal(calls.sessionContext.length, 3, "一次准备 + 两次最终新鲜度核验");
   assert.equal(calls.generate.length, 2);
 });
 

@@ -158,13 +158,13 @@ test("createHttpResponseHandler：仅内部审查会话的 generate 响应被包
 
 test("setup：为审查链 provider 注册 http.response 钩子；链变更后重注册", async () => {
   const { calls, cleanup } = await loadHandler({ review: [ALLOW_JSON] });
-  assert.equal(calls.sessionHooks.length, 1);
-  assert.equal(calls.sessionHooks[0].name, "http.response");
-  assert.deepEqual(calls.sessionHooks[0].options, { providerID: "xiaomi-token-plan-cn" });
+  const responseHooks = () => calls.sessionHooks.filter((hook) => hook.name === "http.response");
+  assert.equal(responseHooks().length, 1);
+  assert.deepEqual(responseHooks()[0].options, { providerID: "xiaomi-token-plan-cn" });
   // 运行时切换到多 provider 链 → 旧注册清理、按新链注册
   await calls.rpc.handlers.model({ arg: "openai/x deepseek/y", sessionID: "ses_test" });
   assert.equal(calls.sessionHooksDisposed, 1);
-  assert.equal(calls.sessionHooks.length, 3, "1 个旧注册 + 2 个新 provider 注册");
+  assert.equal(responseHooks().length, 3, "1 个旧注册 + 2 个新 provider 注册");
   await cleanup();
-  assert.equal(calls.sessionHooksDisposed, 3, "cleanup 释放全部钩子注册");
+  assert.equal(calls.sessionHooksDisposed, 4, "cleanup 释放响应钩子和 compaction 捕获钩子");
 });

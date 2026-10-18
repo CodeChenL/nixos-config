@@ -41,7 +41,8 @@ test("自定义 reviewModel 透传给 generate.text", async () => {
 });
 
 test("模型拒绝：effect=deny 且 message 带 rationale", async () => {
-  const { handler, calls } = await loadHandler({ review: [DENY_JSON] });
+  const { handler, calls } = await loadHandler({ review: [DENY_JSON],
+    sessionMessages: { ses_test: [{ type: "user", text: "不要修改远端系统。" }] } });
   const input = baseInput({ resources: ["git push --force-with-lease origin topic"] });
   await handler(input);
   assert.equal(input.effect, "deny");

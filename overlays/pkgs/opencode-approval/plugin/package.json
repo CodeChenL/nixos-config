@@ -1,6 +1,6 @@
 {
   "name": "opencode-approval",
-  "version": "0.7.9",
+  "version": "0.7.13",
   "description": "OpenCode v2 模型代审授权插件：确定性硬规则 + LLM 审查（参考 Codex Guardian），fail-closed",
   "type": "module",
   "main": "index.js",
@@ -11,6 +11,7 @@
   },
   "files": [
     "index.js",
+    "authorization-evidence.js",
     "tui.js",
     "render-lib.js"
   ],

@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { baseInput, loadHandler } from "./helpers.mjs";
 
-const DENY_JSON = JSON.stringify({ risk_level: "high", outcome: "deny", rationale: "remote write" });
+const DENY_JSON = JSON.stringify({ risk_level: "high", outcome: "deny", reason_code: "substantive_denial", rationale: "remote write" });
 const ALLOW_JSON = JSON.stringify({
   risk_level: "medium",
   outcome: "allow",
@@ -59,6 +59,7 @@ test("模型层拒绝：拒绝消息带复议提示；复议通过后返回一�
 test("连续三次驳回：之后直接失败且不再调模型", async () => {
   const { handler, calls } = await loadHandler({
     review: [DENY_JSON, DENY_JSON, DENY_JSON, DENY_JSON, ALLOW_JSON],
+    sessionMessages: { ses_test: [{ type: "user", text: "只允许读取，不得写入。" }] },
   });
   await handler(baseInput({ action: "write", resources: ["/tmp/out.txt"] }));
   const tool = findTool(calls);

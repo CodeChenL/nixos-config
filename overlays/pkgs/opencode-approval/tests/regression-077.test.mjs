@@ -9,7 +9,7 @@ import { baseInput, deferred, loadCustom } from "./helpers.mjs";
 const PRIMARY = { providerID: "test", id: "primary" };
 const FALLBACK = { providerID: "test", id: "fallback" };
 const ALLOW = JSON.stringify({ outcome: "allow", risk_level: "medium", rationale: "task artifact" });
-const DENY = JSON.stringify({ outcome: "deny", risk_level: "high", rationale: "explicit user scope" });
+const DENY = JSON.stringify({ outcome: "deny", risk_level: "high", reason_code: "substantive_denial", rationale: "explicit user scope" });
 const HANG = () => new Promise(() => {});
 const input = () => baseInput({ action: "edit", resources: ["/tmp/opencode/pvr-resume-20261005/TASKS.md"] });
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -242,11 +242,11 @@ test("上下文准备耗尽 deadline 后重新准备，成功才审查；不复�
   await flush();
   assert.equal(calls.generate.length, 0);
   await advance(t, 100);
-  assert.equal(contexts, 2);
+  assert.equal(contexts, 3, "一次过期准备、一次重试准备、一次放行前强制刷新");
   await pending;
   assert.equal(action.effect, "allow");
   assert.equal(calls.generate.length, 1);
-  assert.match(calls.generate[0].prompt, /\[user\].*write only to perf-docs\//);
+  assert.match(calls.generate[0].prompt, /"text":"write only to perf-docs\/".*"authority":"user-authorization"/);
 });
 
 test("重试重新获取最新用户约束；范围拒绝不重试成 allow", async (t) => {
@@ -264,14 +264,14 @@ test("重试重新获取最新用户约束；范围拒绝不重试成 allow", as
   await advance(t, 100);
   assert.equal(calls.generate.length, 2);
   await pending;
-  assert.match(calls.generate[1].prompt, /\[user\].*r15 write root = perf-docs\/; do not execute ssh perf events/);
+  assert.match(calls.generate[1].prompt, /"text":"r15 write root = perf-docs\/; do not execute ssh perf events".*"authority":"user-authorization"/);
   assert.equal(action.effect, "deny");
   assert.match(action.message, /explicit user scope/);
 });
 
 test("复议独立 deadline：初审很久后受理，首次超时重试成功，grant 只消费一次", async (t) => {
   const { handler, calls } = await setup(t, {
-    options: { deadlineMs: 100, attemptTimeoutMs: 100 },
+    options: { includeContext: true, deadlineMs: 100, attemptTimeoutMs: 100 },
     review: [DENY, ALLOW, DENY],
     onGenerate: ({ calls }) => calls.generate.length === 2 ? HANG() : undefined,
   });
@@ -300,7 +300,7 @@ test("复议独立 deadline：初审很久后受理，首次超时重试成功�
 
 test("复议也受单次 attempt 上限保护，慢 primary 转 fallback 签发 grant", async (t) => {
   const { handler, calls } = await setup(t, {
-    options: { deadlineMs: 1_000, attemptTimeoutMs: 100, fallbackModels: [FALLBACK] },
+    options: { includeContext: true, deadlineMs: 1_000, attemptTimeoutMs: 100, fallbackModels: [FALLBACK] },
     review: [DENY, ALLOW],
     onGenerate: ({ calls }) => calls.generate.length === 2 ? HANG() : undefined,
   });
@@ -315,7 +315,8 @@ test("复议也受单次 attempt 上限保护，慢 primary 转 fallback 签发 
 
 test("复议两轮 deadline 均失败：不签发 grant、不计驳回；下一次模型 deny 仅记一次", async (t) => {
   const { handler, calls } = await setup(t, {
-    options: { deadlineMs: 100, attemptTimeoutMs: 100 },
+    options: { includeContext: true, deadlineMs: 100, attemptTimeoutMs: 100 },
+    sessionMessages: { ses_test: [user("禁止写操作。")] },
     review: [DENY],
     onGenerate: ({ calls }) => [2, 3].includes(calls.generate.length) ? HANG() : undefined,
   });
@@ -352,9 +353,9 @@ test("初审与复议 prompt 均明确工作区默认来源、动作边界、写
   }
 });
 
-test("README 保留预算/重试/工作区边界说明，发行示例升级 0.7.9", () => {
+test("README 保留预算/重试/工作区边界说明，发行示例升级 0.7.13", () => {
   const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
-  assert.match(readme, /opencode-approval-0\.7\.9\.tgz/);
+  assert.match(readme, /opencode-approval-0\.7\.13\.tgz/);
   assert.match(readme, /`attemptTimeoutMs`.*min\(45000, deadlineMs \/ 2\)/);
   assert.match(readme, /仅插件自身的整链 deadline 失败/);
   assert.match(readme, /重试整链一次/);
