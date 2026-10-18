@@ -11,17 +11,17 @@
 # 哈希为 nix-prefetch-url 对 tarball 实测的内容哈希，并已与 npm 元数据
 # dist.integrity（sha512）交叉校验一致。
 let
-  version = "2.0.26";
+  version = "2.0.32";
 
   # 平台 → npm 平台包 CPU 后缀 + 实测 sha256（nix-prefetch-url 输出转 SRI）
   targets = {
     x86_64-linux = {
       cpu = "x64";
-      hash = "sha256-ChFuAzoCgEdB1GRDN9ASvfWiSqwzo0wMllNNLVOWERk=";
+      hash = "sha256-ZKH0s4HC0u/BjI12ss45kUF3i0IbVMmLlL6OgIA2Btw=";
     };
     aarch64-linux = {
       cpu = "arm64";
-      hash = "sha256-HXEX27MZaEVviVN7Vi+14g5I2envAyX8iEWr3abvSEI=";
+      hash = "sha256-uEkjLsYdm2JNHEieVpWfU5Vm6xT45bKvXFTvI3EYz2M=";
     };
   };
 
@@ -47,55 +47,24 @@ prev.stdenvNoCC.mkDerivation {
   # npm tarball 解包后顶层只有 package/ 一个目录
   sourceRoot = "package";
 
-  # 内嵌 JS 载荷的等长字节补丁（上游 issue #51541，修复借鉴 PR #44064 语义）：
-  # openai-compatible 协议（rQ）对 `reasoning_options=[{type:"toggle"}]` 的模型此前派生
-  # 零个推理档位；改为复用同一二进制内 deepseek 协议（tQ）的 toggle 分支——生成
-  # none/thinking 两档并写入请求体 `thinking.type=disabled|enabled`（与小米 MiMo 官方
-  # 开关一致）。8 字节等长替换（di→tQ），不改文件尺寸、不破坏 .bun 载荷的 EOF 相对布局；
-  # 构建期强校验命中数与体积，宿主升级导致锚点变化时构建会直接失败。
-  postPatch = ''
-    python3 - <<'PY'
-    import pathlib
-    p = pathlib.Path("bin/opencode")
-    data = p.read_bytes()
-    # 精确修复 #51541（2.0.26 锚点）：仅 reasoning_options=[{type:"toggle"}] 的模型
-    # 改道 rP（deepseek 协议的 thinking.type 两态，body 通道直达请求体）；effort /
-    # budget 分支保持原 ei（openaiChat）行为——rP 的 effort 分支会改变档位语义
-    # （low/high/max、none→thinking disabled），不能整函数替换。U5 原样保留在区域中。
-    # .bun 载荷依赖 EOF 相对偏移，必须字节等长：顺手把 mP 里等价的 includes 链
-    # 改写为 .some()（语义相同）腾出字节，差额以空格补齐（语句间空白无害）。
-    old = (
-        b'cP=(e,i)=>{if(e.providerID==="nvidia")return lP(e,i);return ei(e,i)},'
-        b'U5=(e,i)=>{if(i.type==="effort")return ya(i.values??li,(r)=>({settings:{reasoningEffort:r}}));'
-        b'if(i.type==="toggle")return ma({settings:{reasoning:{enabled:!1}}},{settings:{reasoning:{enabled:!0}}});return[]},'
-        b'mP=(e,i)=>{let r=ni(e).toLowerCase(),u=r.includes("k2.5")||r.includes("k2-5")||r.includes("k2.6")||r.includes("k2-6");'
-    )
-    core = (
-        b'cP=(e,i)=>e.providerID==="nvidia"?lP(e,i):i.type==="toggle"?rP(e,i):ei(e,i),'
-        b'U5=(e,i)=>{if(i.type==="effort")return ya(i.values??li,(r)=>({settings:{reasoningEffort:r}}));'
-        b'if(i.type==="toggle")return ma({settings:{reasoning:{enabled:!1}}},{settings:{reasoning:{enabled:!0}}});return[]},'
-        b'mP=(e,i)=>{let r=ni(e).toLowerCase(),u=["k2.5","k2-5","k2.6","k2-6"].some(x=>r.includes(x));'
-    )
-    n = data.count(old)
-    if n != 1:
-        raise SystemExit("opencode-v2 toggle patch: anchor count %d (expected 1)" % n)
-    if len(core) > len(old):
-        raise SystemExit("opencode-v2 toggle patch: core longer than anchor")
-    new = core + b" " * (len(old) - len(core))
-    out = data.replace(old, new)
-    if len(out) != len(data):
-        raise SystemExit("opencode-v2 toggle patch: size changed")
-    if out.count(new) != 1:
-        raise SystemExit("opencode-v2 toggle patch: replacement not unique")
-    p.write_bytes(out)
-    print("opencode-v2: toggle patch applied (rQ: toggle->tQ; effort/budget stay di)")
-    PY
-  '';
+  # mimo 思考档位补丁（上游 issue #51541）已放弃：上游未修，继续逐版重推导锚点
+  # 成本高且改动闭源载荷。MiMo 按模型默认档位使用（见 home/chen/opencode-slim.nix），
+  # 不依赖 none/thinking 变体；上游修复后直接升级即可获得变体。
 
-  nativeBuildInputs = [ prev.autoPatchelfHook prev.python3 ];
+  nativeBuildInputs = [ prev.autoPatchelfHook prev.makeWrapper ];
   # ldd 实测仅依赖 glibc（libc/libm/libpthread/libdl/ld-linux）；
   # 保留 cc.lib 兜底可能的 dlopen 或间接 libstdc++/libgcc_s 依赖（多装无害）。
   buildInputs = [ prev.stdenv.cc.cc.lib ];
+
+  # 插件运行时才把 npm 依赖解包到 ~/.cache 并 dlopen 其原生模块
+  # （如 opencode-mem 的 onnxruntime/sharp .node），这些文件不在本包输出里，
+  # autoPatchelf 无法处理，且 dlopen 依赖解析不看主二进制 RPATH，
+  # 只能通过启动环境提供 libstdc++。实测缺它时 mem 工具报
+  # "libstdc++.so.6: cannot open shared object file"。
+  postFixup = ''
+    wrapProgram "$out/bin/opencode" \
+      --prefix LD_LIBRARY_PATH : "${prev.lib.makeLibraryPath [ prev.stdenv.cc.cc.lib ]}"
+  '';
 
   dontConfigure = true;
   dontBuild = true;

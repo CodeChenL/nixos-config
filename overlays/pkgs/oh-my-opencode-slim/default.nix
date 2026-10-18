@@ -1,22 +1,22 @@
 { final, prev, ... }:
 
 let
-  version = "3.0.3";
+  version = "3.0.4";
   bun = final.unstable.bun;
   # 宿主（opencode-v2）编译期 catalog：github.com/anomalyco/opencode 的
   # package.json → workspaces.catalog。@opentui/* 与 solid-js 由 TUI 宿主与插件
   # 共享进程全局状态（OPENTUI_* 环境变量注册表），必须与宿主内嵌版本完全一致，
   # 否则 TUI 插件加载时报 "already registered with different configuration"。
-  # 当前对应 opencode-v2 2.0.26（catalog @opentui 0.5.17）；升级 opencode-v2 版本时同步更新这三个值。
+  # 当前对应 opencode-v2 2.0.32（catalog @opentui 0.5.17）；升级 opencode-v2 版本时同步更新这三个值。
   hostCatalog = {
     "@opentui/core" = "0.5.17";
     "@opentui/solid" = "0.5.17";
     "solid-js" = "1.9.15";
   };
   src = prev.fetchzip {
-    url = "https://codeload.github.com/alvinunreal/oh-my-opencode-slim/tar.gz/4f9dd67a5f94b1a732e667a0e4ec32c181ca4ddb";
+    url = "https://codeload.github.com/alvinunreal/oh-my-opencode-slim/tar.gz/5ac909c0b3fe192494d33a4ba917d0960771aa0a";
     extension = "tar.gz";
-    hash = "sha256-CmKlmkkqX8oWQ/jSxJLRREhiyJ0cc+F8gNSQty/TPu4=";
+    hash = "sha256-kPaSvJzs3HW6/a06uQU3iAbdZlKJxrIqyLgPR1EuIIA=";
   };
   # PR #1415（v2 retry-hook fallback + review 修正）已合入上游 3.0.3，不再打补丁。
   patches = [ ];

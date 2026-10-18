@@ -1,7 +1,10 @@
 let
   model = id: variant: { inherit id variant; };
+  # MiMo 当前目录不暴露变体；固定 #high 会在 fallback 重试前触发
+  # VariantUnavailableError，导致切换成功后停住。使用模型默认档位。
+  mimo = "xiaomi-token-plan-cn/mimo-v2.6-pro";
   commonFallback = [
-    (model "xiaomi-token-plan-cn/mimo-v2.6-pro" "high")
+    mimo
     (model "kimi-code-plan-cn/k3" "max")
     (model "deepseek/deepseek-flash" "max")
     "minimax-cn-coding-plan/MiniMax-M3"
@@ -12,7 +15,7 @@ let
     (model "deepseek/deepseek-flash" "max")
     (model "openai/gpt-6-luna-fast" "xhigh")
     (model "kimi-code-plan-cn/k3" "max")
-    (model "xiaomi-token-plan-cn/mimo-v2.6-pro" "high")
+    mimo
     "minimax-cn-coding-plan/MiniMax-M3"
   ];
   cheap = [
@@ -20,7 +23,7 @@ let
     (model "openai/gpt-6-luna-fast" "xhigh")
     (model "kimi-code-plan-cn/k3" "max")
     "minimax-cn-coding-plan/MiniMax-M3"
-    (model "xiaomi-token-plan-cn/mimo-v2.6-pro" "high")
+    mimo
   ];
   agent = chain: {
     model = chain;
@@ -29,7 +32,7 @@ let
   };
 in
 {
-  "$schema" = "https://unpkg.com/oh-my-opencode-slim@3.0.2/oh-my-opencode-slim.schema.json";
+  "$schema" = "https://unpkg.com/oh-my-opencode-slim@3.0.4/oh-my-opencode-slim.schema.json";
   autoUpdate = false;
   setDefaultAgent = true;
   # Preserve the main session's selected model; keep the array as its fallback chain.
@@ -98,7 +101,7 @@ in
       (model "deepseek/deepseek-flash" "max")
       "minimax-cn-coding-plan/MiniMax-M3"
       (model "kimi-code-plan-cn/k3" "max")
-      (model "xiaomi-token-plan-cn/mimo-v2.6-pro" "high")
+      mimo
     ]) // {
       description = "Documentation and technical writing.";
       orchestratorPrompt = "@writer: Use for documentation and prose changes, with explicit source material and file ownership.";

@@ -12,13 +12,13 @@
 # 合入 2.27.0+，故不再打补丁。compaction-model.test.mjs 转为回归守护上游合入后的行为：
 # 注入内容带会话当前 model/variant（"default" variant 按 OpenCode 归一化省略）。
 let
-  version = "2.29.2";
+  version = "2.31.3";
 in
 prev.runCommand "opencode-mem-${version}.tgz"
   {
     src = prev.fetchurl {
       url = "https://registry.npmjs.org/opencode-mem/-/opencode-mem-${version}.tgz";
-      hash = "sha256-Ws8UIrd/3mw6b8efTw+w+We10LahA/ezsEJrYOMkN4Y=";
+      hash = "sha256-BdSdIdp1GIChCS9/im2O/K5kG2Ddoy/qJJE73QgUZhM=";
     };
     nativeBuildInputs = [ prev.gnutar prev.gzip prev.nodejs ];
     passthru = { inherit version; };

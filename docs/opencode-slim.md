@@ -1,15 +1,17 @@
 # OpenCode Slim
 
-OpenCode 使用 `oh-my-opencode-slim` 替代 OMO；宿主为 **opencode-v2 2.0.22**（Nix 自打包
-`overlays/pkgs/opencode-v2`，含 toggle 档位补丁）。插件固定为 3.0.2，并在 Nix overlay 中回补
-上游 PR #1415 的两条提交。系统已升级到 OpenCode v2；V1 桌面客户端（opencode-desktop）仍保留，
-但它与 V2 共用全局配置且兼容层会拒绝 `permissions` 段（详见文末"已知问题"）。
+OpenCode 使用 `oh-my-opencode-slim` 替代 OMO；宿主为 **opencode-v2 2.0.32**（Nix 自打包
+`overlays/pkgs/opencode-v2`）。上游 issue #51541（toggle 类模型无推理变体，含全部 MiMo）
+未修，mimo 字节补丁已**放弃**：MiMo 按模型默认档位使用（fallback 链不写 variant），
+待上游修复后直接升级获得变体。插件固定为 3.0.4 源码构建。系统已升级到 OpenCode v2；
+V1 桌面客户端（opencode-desktop）仍保留，但它与 V2 共用全局配置且兼容层会拒绝
+`permissions` 段（详见文末"已知问题"）。
 
 ## 配置
 
 - `home/chen/opencode.nix`：服务端与 TUI 插件注册、provider、MCP、记忆插件和后台任务环境变量。
 - `home/chen/opencode-slim.nix`：Slim 角色、模型链、fallback 和并行设置。
-- `overlays/pkgs/oh-my-opencode-slim/default.nix`：固定源码、依赖、上游补丁、构建和回归测试。
+- `overlays/pkgs/oh-my-opencode-slim/default.nix`：固定源码、依赖、构建和回归测试（当前无上游补丁）。
 
 主代理为 `orchestrator`，不固定主会话模型，保留用户通过模型选择器选择的模型。
 实现和设计使用 Sol xhigh，高难度实现、规划和架构使用 Astra xhigh，检索和轻量任务使用 DeepSeek max。
@@ -75,7 +77,7 @@ auth.json 入库）。Home Manager 现在通过 `home/chen/opencode-sync-credent
    同步不重启已有服务、不加载项目插件；完成后应按上文重启服务及独立 TUI，避免其他进程的
    模型缓存仍使用旧连接。只管理默认本地数据库（尊重 `XDG_DATA_HOME`，拒绝 `OPENCODE_DB`
    覆盖）；不更新远端服务、V1 auth.json，也不删除迁移/手工/OAuth 账户，旧非托管密钥需自行清理。
-   该 API 契约已用固定的 2.0.22 验证，升级宿主时须重跑隔离回归：
+   该 API 契约已在 2.0.32 上重跑 5/5（2026-10-17），升级宿主时须重跑隔离回归：
 
    ```sh
    OPENCODE_TEST_BINARY="$(nix build .#nixosConfigurations.ChenIdeaCentre.pkgs.opencode-v2 --no-link --print-out-paths)/bin/opencode" \
@@ -84,5 +86,3 @@ auth.json 入库）。Home Manager 现在通过 `home/chen/opencode-sync-credent
 
 3. **codex-desktop-api-key 的 divider 性能补丁在新版 bundle 上被跳过**（上游 resizer 契约变化），
    pointermove 的布局写回未被节流；需适配新契约或明确接受该性能降级。
-
-上游正式版本包含 #1415 后，可更新固定版本并移除这两条补丁，重新执行构建和加载验证。
