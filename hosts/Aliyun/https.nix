@@ -9,6 +9,11 @@ let
   knotKeyFile = "${stateDir}/knot-key.conf";
   acmeEnvironmentFile = "${stateDir}/acme.env";
 
+  # 443 SNI 分流（nginx stream ssl_preread）：复用 web 端口，降低仅按端口识别的特征。
+  # 未使用 ECH 时 ClientHello SNI 仍是明文，不提供抗 SNI 阻断；web 服务移到回环。
+  proxySni = "p.nenorei.cn";
+  webPort = 9443;
+
   zoneStore = pkgs.writeTextDir "${dnsZone}.zone" ''
     $ORIGIN ${dnsZone}.
     $TTL 300
@@ -133,9 +138,44 @@ in
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
+
+    # 443 上按 SNI 分流（仅 TLS 入口：无 SNI 的明文流量落入 web 后端即被 TLS 拒绝）：
+    #   api.nenorei.cn（默认） → nginx web，回环 ${toString webPort}
+    #   ${proxySni}          → mixed-proxy TLS HTTPS 代理（8443，仍公开监听，兼作 fallback）
+    #   www.apple.com        → xray VLESS+Reality（8444，伪装 SNI 原样透传）
+    # 8443/8444 旧入口保留为备用端点；UDP（游戏）仍走 8443 的 SOCKS5 UDP ASSOCIATE。
+    streamConfig = ''
+      map $ssl_preread_server_name $tlsBackend {
+        api.${acmeDomain}  web;
+        ${proxySni}        proxy;
+        www.apple.com      vless;
+        default            web;
+      }
+
+      upstream web   { server 127.0.0.1:${toString webPort}; }
+      upstream proxy { server 127.0.0.1:8443; }
+      upstream vless { server 127.0.0.1:8444; }
+
+      server {
+        listen 0.0.0.0:443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $tlsBackend;
+        proxy_connect_timeout 5s;
+        proxy_timeout 3600s;
+        tcp_nodelay on;
+      }
+    '';
+
     virtualHosts."api.${acmeDomain}" = {
       useACMEHost = acmeDomain;
       forceSSL = true;
+      listen = [
+        { addr = "0.0.0.0"; port = 80; ssl = false; }
+        { addr = "[::]"; port = 80; ssl = false; }
+        { addr = "127.0.0.1"; port = webPort; ssl = true; }
+        { addr = "[::1]"; port = webPort; ssl = true; }
+      ];
       locations = {
         "= /kiro".return = "302 /kiro/admin";
         "= /kiro/".return = "302 /kiro/admin";

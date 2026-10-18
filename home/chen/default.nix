@@ -35,10 +35,15 @@ let
     const prependProxy = [
       { name: "SOCKS5-Proxy", type: "socks5", server: "192.168.2.3", port: 7891, udp: true },
       { name: "Aliyun-SOCKS5", type: "socks5", server: "api.nenorei.cn", port: 8443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, udp: true },
-      { name: "Aliyun-VLESS", type: "vless", server: "api.nenorei.cn", port: 8444, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } }
+      // 443 SNI 分流入口：SNI p.nenorei.cn 经服务器 nginx stream 分流到 mixed-proxy 的 TLS
+      // HTTPS 代理模式；证书校验名与 SNI 一致（*.nenorei.cn 泛域名证书覆盖）。仅 TCP。
+      { name: "Aliyun-HTTPS443", type: "http", server: "api.nenorei.cn", port: 443, username: "chen", password: __CLASH_SOCKS5_RUNTIME_PASSWORD_90DB41EA__, tls: true, sni: "p.nenorei.cn" },
+      { name: "Aliyun-VLESS", type: "vless", server: "api.nenorei.cn", port: 8444, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } },
+      // 443 Reality 入口：SNI www.apple.com 经 stream 分流到 xray，抗探测性质与直连 8444 相同。
+      { name: "Aliyun-VLESS443", type: "vless", server: "api.nenorei.cn", port: 443, uuid: __CLASH_VLESS_RUNTIME_UUID__, udp: true, tls: true, servername: "www.apple.com", "client-fingerprint": "chrome", flow: "xtls-rprx-vision", "reality-opts": { "public-key": __CLASH_VLESS_REALITY_PUBLIC__, "short-id": __CLASH_VLESS_SHORTID__ } }
     ];
 
-    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-VLESS"];
+    const prependProxygroupsProxies = ["SOCKS5-Proxy", "Aliyun-SOCKS5", "Aliyun-HTTPS443", "Aliyun-VLESS", "Aliyun-VLESS443"];
 
     function main(config) {
       const existingRules = Array.isArray(config.rules) ? config.rules : [];
