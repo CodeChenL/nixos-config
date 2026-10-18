@@ -17,6 +17,9 @@
 
 ## 日常更新
 
+如果更新包含 Sub2API 版本变更，必须先按“Sub2API”一节停止服务并完成 PostgreSQL
+备份；不能先启动新版本再补备份。
+
 ```sh
 nixos-rebuild switch \
   --flake 'path:/home/chen/nixos-config#Aliyun' \
@@ -58,6 +61,44 @@ setup 服务会失败，不会自动补建密钥。应用若绕过本模块、�
 ## Sub2API
 
 当前配置状态：`services.sub2api.enable = true`。
+
+### 0.2.12 → 0.2.16 数据库变更与升级前备份
+
+0.2.16 从 0.2.12 升级时会在应用启动阶段依次执行五个仅向前迁移文件：一个删除两个
+`platform` CHECK 约束；一个新增 `groups.i18n` JSONB；一个新建 `gemini_cached_contents`
+及索引；一个新增 `channel_usage` JSONB；一个新增 mutation 字段及部分索引。
+发布物没有自动反向迁移，旧版读取迁移后数据的兼容性也未验证。因此，部署新版本前
+必须先取得可恢复的数据库备份。
+
+当前服务单元、数据库和数据库角色分别是 `sub2api.service`、`sub2api` 和 `sub2api`。
+以下命令必须在 Aliyun 的 **root shell** 中执行；先停止应用可避免备份完成后又有新写入：
+
+```sh
+set -eu
+systemctl stop sub2api.service
+
+backup_dir=/var/backups/sub2api
+install -d -m 0700 -o root -g root "$backup_dir"
+umask 077
+backup=$(mktemp "$backup_dir/sub2api-pre-0.2.16-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")
+trap 'rm -f "$backup"' EXIT
+
+if ! sudo -u postgres pg_dump --format=custom --dbname=sub2api >"$backup"; then
+  echo "pg_dump failed; backup removed" >&2
+  exit 1
+fi
+test -s "$backup"
+sudo -u postgres pg_restore --list <"$backup" >/dev/null
+chmod 0600 "$backup"
+trap - EXIT
+printf 'verified backup: %s\n' "$backup"
+```
+
+这里使用本机 peer 身份以 `postgres` 执行 `pg_dump`，但由 root shell 完成 `>` 重定向，
+所以 `postgres` 不需要写入 root 专用的 `0700` 目录。不要改成让 `postgres` 直接用
+`-f /var/backups/...` 写文件，也不要从非 root shell 使用上述重定向。`>` 会在
+`pg_dump` 运行前创建文件，故“文件存在”不代表备份成功；只有非空检查和
+`pg_restore --list` 都通过才可部署。若取消部署，应先重启原有 `sub2api.service`。
 
 验证：
 
@@ -220,6 +261,32 @@ HTTPS 与 SOCKS5 两个入口共用一组凭据：用户名 `chen`，密码是�
 裸 SOCKS5 到代理这一段不加密，协议及口令协商为明文，内容是否加密由应用决定；
 通过 SOCKS5 访问 HTTPS 网站时，网站 TLS 仍由客户端与网站端到端建立。
 
+## 443 端口复用与 SNI 分流
+
+443 由 nginx `stream` 模块 `ssl_preread` 按 SNI 分流，与 web 共用端口，从而降低
+仅按端口识别的特征（仅 TLS，明文 SOCKS5 不可达）。这里没有使用 ECH，ClientHello
+里的 `p.nenorei.cn` / `www.apple.com` SNI 是明文；中间设备仍可读取并按 SNI 阻断，
+因此端口复用不等于不可识别，也不提供抗 SNI 阻断能力。
+`hosts/Aliyun/https.nix` 的 `services.nginx.streamConfig` 声明分流，web TLS 移至
+回环 `127.0.0.1:9443`。
+
+| SNI | 后端 | 说明 |
+| --- | --- | --- |
+| `api.nenorei.cn`（默认） | nginx web（回环 9443） | API / kiro 管理页 |
+| `p.nenorei.cn` | mixed-proxy TLS HTTPS 代理 | 正向代理，仅 TCP |
+| `www.apple.com` | xray VLESS+Reality（8444） | 伪装 SNI 原样透传到真实目标 |
+
+客户端节点 `Aliyun-HTTPS443`（`sni: p.nenorei.cn`，证书校验名同）与
+`Aliyun-VLESS443` 由 `home/chen/default.nix` 注入；8443/8444 旧入口保留为
+fallback，UDP（游戏）仍走 8443 的 SOCKS5 UDP ASSOCIATE（HTTPS 代理模式仅 TCP）。
+手工代理示例（`p.nenorei.cn` 无 DNS 记录时加 `--resolve`；加一条 `p` A
+`47.254.74.103` 后可省略）：
+
+```sh
+curl --noproxy '' --resolve p.nenorei.cn:443:47.254.74.103 \
+  --proxy https://p.nenorei.cn:443 --proxy-user chen https://example.com/
+```
+
 ## VLESS + Reality 代理（8444，新增不替换）
 
 与 mixed-proxy（8443）并行的新一代代理：xray-core，VLESS + Reality + XTLS-Vision，
@@ -235,7 +302,8 @@ loopback 实测）。服务单元 `xray-vless.service`，配置由 `hosts/Aliyun
   short-id 见 `secrets/vless/short-id`，serverName=`www.apple.com`，fingerprint=`chrome`；
 - 密钥两端分别部署（本机与服务器的 `secrets/vless/` 内容须一致）；
 - 游戏 UDP 加速建议另行叠加 Hysteria2（VLESS 的 UDP-over-TCP 有队头阻塞，不适合实时游戏）；
-- xray 提示：Reality 监听非 443 端口理论上更易被识别（现 8444）；迁移替换阶段可考虑换 443。
+- xray 提示：Reality 主入口已在 443（SNI `www.apple.com` 经 nginx stream 分流，见上节），
+  8444 保留为 fallback；如需收尾可再评估直连端口收敛。
 
 验收（2026-10-09）：本机经隧道 curl 出口 IP 3/3 = 47.254.74.103；mixed-proxy 未受影响。
 HTTPS 代理入口会加密客户端到代理这一段，但它仍是普通 HTTP 代理，只承载 TCP。
@@ -320,6 +388,77 @@ ip route get 192.168.33.1
 ```
 
 ## 回滚
+
+`nixos-rebuild switch --rollback` 只切换 NixOS 系统 generation，不会回滚 PostgreSQL。
+如果新 Sub2API 已启动并执行上述迁移，不要直接让 0.2.12 对着迁移后的数据库运行。
+优先评估继续向前修复；只有确认需要回到旧应用、并且有对应升级前 dump 时，才在
+维护窗口执行受控数据库恢复。
+
+恢复前必须停止 `sub2api.service`，确认没有其他应用使用 `sub2api` 数据库，并先备份
+**当前**状态。随后选择并再次校验要恢复的升级前 dump：
+
+```sh
+# 以下仍在 Aliyun 的 root shell 中。
+set -eu
+systemctl stop sub2api.service
+
+backup_dir=/var/backups/sub2api
+install -d -m 0700 -o root -g root "$backup_dir"
+umask 077
+current=$(mktemp "$backup_dir/sub2api-pre-restore-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX.dump")
+trap 'rm -f "$current"' EXIT
+if ! sudo -u postgres pg_dump --format=custom --dbname=sub2api >"$current"; then
+  echo "current-state pg_dump failed; backup removed" >&2
+  exit 1
+fi
+test -s "$current"
+sudo -u postgres pg_restore --list <"$current" >/dev/null
+chmod 0600 "$current"
+trap - EXIT
+printf 'verified current-state backup: %s\n' "$current"
+
+# 替换为实际已验证的升级前备份文件。
+dump=/var/backups/sub2api/sub2api-pre-0.2.16-20261018T023000Z.Ab12Cd.dump
+test -s "$dump"
+sudo -u postgres pg_restore --list <"$dump" >/dev/null
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)_$$
+restore_db="sub2api_restore_$stamp"
+failed_db="sub2api_failed_$stamp"
+
+# 恢复到新建的专用数据库；不覆盖在线库，也不停止或删除整个 PostgreSQL 实例。
+sudo -u postgres createdb --owner=sub2api "$restore_db"
+sudo -u postgres pg_restore \
+  --exit-on-error --single-transaction --no-owner --no-privileges \
+  --role=sub2api --dbname="$restore_db" <"$dump"
+sudo -u postgres psql --dbname="$restore_db" --command='SELECT 1;'
+
+# sub2api.service 保持停止；终止该数据库的残留会话后交换数据库名。
+# 原迁移后数据库保留为 sub2api_failed_*，验收完成前不要删除。
+sudo -u postgres psql --dbname=postgres --set=ON_ERROR_STOP=1 \
+  --set=restore_db="$restore_db" --set=failed_db="$failed_db" <<'SQL'
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname IN ('sub2api', :'restore_db')
+  AND pid <> pg_backend_pid();
+ALTER DATABASE sub2api RENAME TO :"failed_db";
+ALTER DATABASE :"restore_db" RENAME TO sub2api;
+SQL
+```
+
+该流程只替换专用的 `sub2api` 数据库，保留恢复前数据库，不会一刀切地 drop 共享
+PostgreSQL 实例或其中的其他数据库。数据库恢复成功后，再列出系统 generations，
+人工确认目标 generation 确实包含与该 dump 匹配的 Sub2API 版本、配置和 secrets，
+然后才切换并启动服务；不要仅因“上一个 generation”存在就强行回到 0.2.12：
+
+```sh
+nix-env --profile /nix/var/nix/profiles/system --list-generations
+nix-env --profile /nix/var/nix/profiles/system --switch-generation <已确认的-generation>
+/nix/var/nix/profiles/system/bin/switch-to-configuration switch
+systemctl status sub2api.service
+```
+
+若此次系统回滚不涉及数据库变更，且已确认当前数据库与目标应用兼容，才可使用简写：
 
 ```sh
 ssh root@47.254.74.103 'nixos-rebuild switch --rollback'
