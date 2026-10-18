@@ -75,39 +75,11 @@ in
         # dist/plugin.js 双导出（v1 server / v2 setup），store 路径进入 spec。
         "opencode-mem@file:${pkgs.opencode-mem}"
         slimPlugin
-        # 模型代审授权插件（参考 Codex Guardian）：硬规则 + LLM 审查，fail-closed。
-        {
-          package = "opencode-approval@file:${pkgs.opencode-approval}";
-          options = {
-            # 主审查模型档位须存在于目录派生的 variants（deepseek-flash 为 none/low/high/max）；
-            # 此前误写 xhigh 会被 model-resolver 以 VariantUnavailableError 拒绝，
-            # 导致 primary 永远不生效、实际依赖备用链。
-            reviewModel = {
-                providerID = "xiaomi-token-plan-cn";
-                id = "mimo-v2.6-pro";
-            };
-            # 审查模型链备用项：primary 失败（不可用/超时/输出非法）时按序降级，
-            # 跨供应商以增强可用性；全链失败才 fail-closed。
-            fallbackModels = [
-              {
-                providerID = "deepseek";
-                id = "deepseek-flash";
-                variant = "max";
-              }
-              {
-                providerID = "openai";
-                id = "gpt-6-luna-fast";
-                variant = "xhigh";
-              }
-            ];
-            onFailure = "deny";
-          };
-        }
       ];
       update = "disable";
       default_agent = "orchestrator";
-      # 基线全部 ask：每个工具授权进 opencode-approval 的 permission.evaluate，
-      # 由硬规则/审查模型裁决 allow/deny，用户零问询；审查故障 fail-closed deny。
+      # 基线全部 ask：交由宿主权限机制逐次确认。opencode-approval 插件已停用
+      # （包仍保留在 overlays 中，需要时再挂载）；无插件时高风险自动裁决不可用。
       permissions = [
         {
           action = "*";
