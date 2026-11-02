@@ -19,6 +19,7 @@ import uuid
 
 PROVIDERS = {
     "openai": "and.key",
+    "anthropic": "and.key",
     "deepseek": "deepseek.key",
     "kimi-code-plan-cn": "kimi.key",
     "xiaomi-token-plan-cn": "xiaomi.key",

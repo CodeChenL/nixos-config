@@ -133,6 +133,16 @@ in
             chunkTimeout = 60000;
           };
         };
+        # Sub2API：Claude 订阅 → Anthropic 兼容端点（/v1/messages、/v1/models），
+        # nginx "/" → 127.0.0.1:8080；baseURL 以 /v1 结尾（SDK 在其后拼 /messages）。
+        # 凭据与 openai 同一 Sub2API 网关（and.key）。
+        "anthropic" = {
+          settings = {
+            baseURL = "https://api.nenorei.cn/v1";
+            headerTimeout = 60000;
+            chunkTimeout = 60000;
+          };
+        };
       };
     };
   };
@@ -142,6 +152,8 @@ in
 
   # cli.json: TUI/CLI 显示偏好（v2 "CLI settings"）。HM 托管后 /settings 对话框的
   # 改动在下次 switch 会被覆盖（store 符号链接）——调整请改此处声明。
+  # 2026-10-19 同步自 /settings：scrollbar=false、permissions=autoaccept。
+  # 注意：approval 插件已停用 + autoaccept = 所有工具调用自动执行、无逐次确认。
   xdg.configFile."opencode/cli.json" = {
     force = true;
     text = builtins.toJSON {
@@ -150,12 +162,12 @@ in
       diffs = { wrap = "word"; };
       session = {
         sidebar = "auto";
-        scrollbar = true;
+        scrollbar = false;
         thinking = "hide";
         markdown = "rendered";
         grouping = "auto";
         verbosity = "high";
-        permissions = "prompt";
+        permissions = "autoaccept";
         image_preview = true;
         new_location = "launch";
       };

@@ -132,10 +132,16 @@ class V2IntegrationTests(unittest.TestCase):
             auth.write_text(json.dumps(legacy))
             self.assertEqual(export(), initial)
 
-            keys = {provider: f'dummy-first-{provider}-"quoted"-\\escaped' for provider in sync.PROVIDERS}
+            # 多个 provider 可共用一个 key 文件（如 anthropic 与 openai 同用
+            # and.key）：一个文件只能有一个值，故共用文件的 provider 期望同值。
+            first_values = {
+                name: f'dummy-first-{name}-"quoted"-\\escaped'
+                for name in sorted(set(sync.PROVIDERS.values()))
+            }
+            keys = {provider: first_values[sync.PROVIDERS[provider]] for provider in sync.PROVIDERS}
             placeholders.extend(keys.values())
-            for provider, key in keys.items():
-                path = secret_dir / sync.PROVIDERS[provider]
+            for name, key in first_values.items():
+                path = secret_dir / name
                 path.write_text(key + "\n")
                 path.chmod(0o600)
             invoke({"OPENCODE_CONFIG_CONTENT": "invalid inherited configuration"})
@@ -145,10 +151,14 @@ class V2IntegrationTests(unittest.TestCase):
             invoke()
             self.assertEqual(snapshot(), unchanged)  # No new IDs or timestamp churn.
 
-            keys = {provider: f"dummy-rotated-{provider}" for provider in sync.PROVIDERS}
+            rotated_values = {
+                name: f"dummy-rotated-{name}"
+                for name in sorted(set(sync.PROVIDERS.values()))
+            }
+            keys = {provider: rotated_values[sync.PROVIDERS[provider]] for provider in sync.PROVIDERS}
             placeholders.extend(keys.values())
-            for provider, key in keys.items():
-                (secret_dir / sync.PROVIDERS[provider]).write_text(key + "\n")
+            for name, key in rotated_values.items():
+                (secret_dir / name).write_text(key + "\n")
             invoke()
             rotated = assert_active(keys)
             self.assertEqual(len(rotated), len(first))
@@ -162,6 +172,8 @@ class V2IntegrationTests(unittest.TestCase):
             keys["openai"] = "dummy-partial-rotation"
             placeholders.append(keys["openai"])
             (secret_dir / "and.key").write_text(keys["openai"])
+            # and.key 同时供 anthropic 旋转到同值。
+            keys["anthropic"] = keys["openai"]
             missing = invoke()
             self.assertIn("kimi.key", missing.stderr)
             assert_active(keys)
