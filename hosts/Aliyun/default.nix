@@ -22,6 +22,16 @@ in
   # 注意：公网暴露仅限于阿里云安全组层面，请妥善维护安全组规则。
   networking.firewall.enable = false;
 
+  # TCP 调优（长肥有损路径）：Aliyun→韩国网关 43.133.254.201 实测 135ms RTT +
+  # ~1% 重传，CUBIC 下单流仅 ~0.2-0.7Mbps 且流式"停顿→突发"每次空闲重置慢启动。
+  # BBR 不以丢包为拥塞信号；slow_start_after_idle=0 保持突发流的 cwnd。
+  boot.kernelModules = [ "tcp_bbr" ];
+  boot.kernel.sysctl = {
+    "net.ipv4.tcp_congestion_control" = "bbr";
+    "net.core.default_qdisc" = "fq";
+    "net.ipv4.tcp_slow_start_after_idle" = 0;
+  };
+
   # WireGuard：Aliyun 作为 OpenWrt `chen` 隧道的 ALIYUN peer。
   # 本端私钥使用 OpenWrt secret 中的 WG_CHEN_PEER1_PRIVATE_KEY。
   networking.wireguard.interfaces.chen = {

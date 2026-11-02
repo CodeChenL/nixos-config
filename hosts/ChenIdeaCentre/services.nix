@@ -36,6 +36,9 @@
   boot.kernelModules = [ "usbip-host" "vhci-hcd" "spidev" ];
 
   # ── Sunshine（远程桌面主机 — Moonlight 客户端配对）─────────────────
+  # 声明式配置（--config 指向 store 生成的 sunshine.conf）：Web UI 的"配置"
+  # 页将不能保存（store 只读），改配置请编辑此处；"应用"页不受影响
+  # （file_apps 默认仍指向 ~/.config/sunshine/apps.json）。
   services.sunshine = {
     enable = true;
     autoStart = true;
@@ -44,6 +47,23 @@
     package = pkgs.sunshine.override {
       cudaSupport = true;
       cudaPackages = pkgs.cudaPackages;
+    };
+    settings = {
+      address_family = "both";
+      bind_address = "0.0.0.0";  # 监听所有接口（wg / 局域网 / 回环）
+      capture = "kms";
+      key_rightalt_to_key_win = "enabled";
+      locale = "zh";
+      nvenc_preset = 1;
+      origin_web_ui_allowed = "wan";
+      output_name = "0";
+      upnp = "enabled";
+      wan_encryption_mode = 0;
+      # CSRF 白名单（前缀匹配，覆盖任意端口）：
+      #   0.0.0.0      —— 经 SSH 隧道/本机浏览（Origin 为 http(s)://0.0.0.0:…）
+      #   192.168.2.x  —— LAN 动态 IP（当前 .237，曾为 .234；漂移后需同步改这里）
+      #   10.0.33.3    —— wg-chen 静态入口（推荐 URL：https://10.0.33.3:47990）
+      csrf_allowed_origins = "http://0.0.0.0,https://0.0.0.0,https://192.168.2.237,https://192.168.2.234,https://10.0.33.3,http://10.0.33.3";
     };
   };
 
@@ -107,7 +127,25 @@
 
     # Raspberry Pi rpiboot / RPI2 Boot
     SUBSYSTEMS=="usb", ATTRS{idVendor}=="0a5c", ATTRS{idProduct}=="2763", MODE="0666", GROUP="wheel"
+
+    # Raspberry Pi RP2040/RP2350：BOOTSEL 免 root（picotool/openocd），
+    # 并让 ModemManager 忽略其 CDC ACM 串口（避免 AT 探测长期占用 ttyACM）。
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", MODE="0666", GROUP="wheel", ENV{ID_MM_DEVICE_IGNORE}="1"
+    SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"
   '';
+
+  # 保留 ModemManager（不禁用），但只探测显式白名单设备：
+  # 普通 ttyACM/ttyUSB 不再被当作 modem 做 AT 探测（该探测会独占端口数十秒）。
+  # 将来接真 modem 时按 VID/PID 加 udev 规则：
+  #   SUBSYSTEM=="usb", ATTRS{idVendor}=="xxxx", ATTRS{idProduct}=="yyyy", ENV{ID_MM_DEVICE_WHITELIST}="1"
+  networking.modemmanager.enable = true;
+  systemd.services.ModemManager = {
+    overrideStrategy = "asDropin";
+    serviceConfig.ExecStart = [
+      ""
+      "${pkgs.modemmanager}/sbin/ModemManager --filter-policy=ALLOWLIST-ONLY"
+    ];
+  };
 
   # ── sysctl 调优 ────────────────────────────────────────────────
   boot.kernel.sysctl = {

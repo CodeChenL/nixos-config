@@ -29,6 +29,8 @@ let
       "DOMAIN,nenorei.cn,DIRECT",
       "DOMAIN-SUFFIX,nenorei.cn,DIRECT",
       "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
+      // 韩国长上下文网关：本机直连仅 52ms/零丢包，绕代理链反而劣化
+      "IP-CIDR,43.133.254.201/32,DIRECT,no-resolve",
       "DOMAIN-KEYWORD,discord,Proxy"
     ];
 
@@ -236,6 +238,8 @@ in
       "DOMAIN,nenorei.cn,DIRECT",
       "DOMAIN-SUFFIX,nenorei.cn,DIRECT",
       "IP-CIDR,47.254.74.103/32,DIRECT,no-resolve",
+      // 韩国长上下文网关：本机直连仅 52ms/零丢包，绕代理链反而劣化
+      "IP-CIDR,43.133.254.201/32,DIRECT,no-resolve",
     ];
 
     function main(config, profileName) {

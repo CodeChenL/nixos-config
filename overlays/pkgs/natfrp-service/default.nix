@@ -8,7 +8,7 @@ final.callPackage (
       arch = if final.stdenv.hostPlatform.isAarch64 then "arm64" else "amd64";
       hash = if final.stdenv.hostPlatform.isAarch64
         then "sha256-Jz7ZcURkkRw7n/3Lli4m7PTZOLdPgG06aNTtg04I7X8="
-        else "sha256-kCJm2kdos43WoikFoFDhDVkU7EjlFoK1+4ASG/CvUTA=";
+        else "sha256-H9pWNr4gOYk2fYMRUpKyGDHVA5d6ur9Jr6sbReab3vI=";
     in
     stdenvNoCC.mkDerivation {
       pname = "natfrp-service";
