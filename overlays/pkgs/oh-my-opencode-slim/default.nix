@@ -1,22 +1,22 @@
 { final, prev, ... }:
 
 let
-  version = "3.0.4";
+  version = "3.0.6";
   bun = final.unstable.bun;
   # 宿主（opencode-v2）编译期 catalog：github.com/anomalyco/opencode 的
   # package.json → workspaces.catalog。@opentui/* 与 solid-js 由 TUI 宿主与插件
   # 共享进程全局状态（OPENTUI_* 环境变量注册表），必须与宿主内嵌版本完全一致，
   # 否则 TUI 插件加载时报 "already registered with different configuration"。
-  # 当前对应 opencode-v2 2.0.32（catalog @opentui 0.5.17）；升级 opencode-v2 版本时同步更新这三个值。
+  # 当前对应 opencode-v2 2.2.5（catalog @opentui 0.8.0）；升级 opencode-v2 版本时同步更新这三个值。
   hostCatalog = {
-    "@opentui/core" = "0.5.17";
-    "@opentui/solid" = "0.5.17";
-    "solid-js" = "1.9.15";
+    "@opentui/core" = "0.8.0";
+    "@opentui/solid" = "0.8.0";
+    "solid-js" = "1.9.17";
   };
   src = prev.fetchzip {
-    url = "https://codeload.github.com/alvinunreal/oh-my-opencode-slim/tar.gz/5ac909c0b3fe192494d33a4ba917d0960771aa0a";
+    url = "https://codeload.github.com/alvinunreal/oh-my-opencode-slim/tar.gz/5c6655f0b7d36b0e7c1b3e537eedf799ee971102";
     extension = "tar.gz";
-    hash = "sha256-kPaSvJzs3HW6/a06uQU3iAbdZlKJxrIqyLgPR1EuIIA=";
+    hash = "sha256-lzAZC+L8hjrIBJ1iAg4vlHdf8tz9MQqo7Q47hMZnt0Y=";
   };
   # PR #1415（v2 retry-hook fallback + review 修正）已合入上游 3.0.3，不再打补丁。
   patches = [ ];
@@ -38,7 +38,7 @@ let
     '';
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-JZiHU97oZCaXJ8rMrlCICywmbhZOMHM0uH4o7DAODg8=";
+    outputHash = "sha256-ToxxxZQEZ3BfSqvli/hC/xoGIKwQkEb4Bcb2gGj4qC0=";
   };
   package = prev.stdenvNoCC.mkDerivation {
     pname = "oh-my-opencode-slim";
@@ -63,32 +63,62 @@ let
       runHook postBuild
     '';
     postBuild = ''
-      # 宿主（opencode-v2 2.0.22）的 TUI 运行时会重写「本地插件」的 @opentui/*、solid-js
+      # 宿主（opencode-v2）的 TUI 运行时会重写「本地插件」的 @opentui/*、solid-js
       # 导入为 opentui:runtime-module:* 虚拟模块，让插件复用宿主内嵌实例（共享 Solid
       # RendererContext）。但 npm 安装的插件（node_modules ESM）不走该重写：插件自带的
       # @opentui/solid 实例拿不到宿主渲染上下文，侧栏渲染时报 "No renderer found"，
       # 只弹一次 toast 后静默空白（表现为「加载不报错、界面不显示」）。
-      # 这里直接把产物里的裸导入改写为宿主虚拟模块 id（tui2.js 共 4 处），宿主大版本
-      # 升级导致虚拟模块机制变化时需同步调整；tui.js 是 v1 入口，不受影响。
+      # 这里把产物里的裸导入改写为宿主虚拟模块 id（闭包内共 4 处；3.0.6 起
+      # --splitting 将其拆入 chunks，故从 tui2.js 追踪相对导入闭包逐文件改写），
+      # 宿主大版本升级导致虚拟模块机制变化时需同步调整；tui.js 是 v1 入口、
+      # index.js/server 是 v2 服务端入口，均不走虚拟模块，必须保持裸导入。
       node - <<'NODE'
       const fs = require("node:fs");
-      const file = "dist/tui2.js";
-      let code = fs.readFileSync(file, "utf8");
+      const path = require("node:path");
+      const esc = (s) => s.replace(/[^a-zA-Z0-9]/g, (c) => "\\" + c);
+      const specRe = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
+      const closure = new Set();
+      const queue = [path.resolve("dist/tui2.js")];
+      while (queue.length > 0) {
+        const file = queue.pop();
+        if (closure.has(file)) continue;
+        closure.add(file);
+        const code = fs.readFileSync(file, "utf8");
+        for (const match of code.matchAll(specRe)) {
+          if (match[1].startsWith(".")) queue.push(path.resolve(path.dirname(file), match[1]));
+        }
+      }
       const rewrite = (from, to, min) => {
-        const needle = 'from "' + from + '"';
-        const count = code.split(needle).length - 1;
-        if (count < min) throw new Error("tui2.js runtime-module patch: " + from + " found " + count + " < " + min);
-        code = code.split(needle).join('from "' + to + '"');
+        const pattern = new RegExp("((?:from|import)\\s*\\(?\\s*[\"'])" + esc(from) + "([\"'])", "g");
+        let total = 0;
+        for (const file of closure) {
+          const code = fs.readFileSync(file, "utf8");
+          const next = code.replace(pattern, (m, pre, q) => { total += 1; return pre + to + q; });
+          if (next !== code) fs.writeFileSync(file, next);
+        }
+        if (total < min) {
+          const found = [...closure].map((f) => path.relative("dist", f) + ": " +
+            [...fs.readFileSync(f, "utf8").matchAll(specRe)].map((m) => m[1]).join(", ")).join(" | ");
+          throw new Error("tui2.js runtime-module patch: " + from + " found " + total + " < " + min + " | closure: " + found);
+        }
       };
       rewrite("@opentui/core", "opentui:runtime-module:%40opentui%2Fcore", 1);
       rewrite("@opentui/solid", "opentui:runtime-module:%40opentui%2Fsolid", 2);
       rewrite("solid-js", "opentui:runtime-module:solid-js", 1);
-      for (const leftover of ['from "@opentui/', 'import "@opentui/', 'from "solid-js', 'import "solid-js']) {
-        if (code.includes(leftover)) throw new Error("tui2.js runtime-module patch: leftover " + leftover);
+      for (const file of closure) {
+        const code = fs.readFileSync(file, "utf8");
+        for (const leftover of ['@opentui/', '"solid-js', "'solid-js"]) {
+          if (code.includes(leftover)) throw new Error("tui2.js runtime-module patch: leftover " + leftover + " in " + file);
+        }
+        console.log("tui2 runtime-module patch: " + path.relative("dist", file));
       }
-      fs.writeFileSync(file, code);
+      for (const untouched of ["dist/tui.js", "dist/index.js", "dist/server/index.js"]) {
+        if (fs.existsSync(untouched) && fs.readFileSync(untouched, "utf8").includes("opentui:runtime-module")) {
+          throw new Error("tui2.js runtime-module patch leaked into " + untouched);
+        }
+      }
       NODE
-      node --check dist/tui2.js
+      for f in dist/tui2.js dist/chunks/*.js; do node --check "$f"; done
     '';
     doCheck = true;
     checkPhase = ''

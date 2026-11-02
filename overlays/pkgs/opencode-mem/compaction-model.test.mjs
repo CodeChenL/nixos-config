@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import vm from "node:vm";
 
 const bundle = process.env.MEM_BUNDLE;
 assert.equal(typeof bundle, "string", "MEM_BUNDLE must name the built plugin");
 const source = String(readFileSync(bundle, "utf8"));
+// 2.39.0 起 formatMemoriesForCompaction 依赖 services/memory-provenance.js
+// （bundle 外部的纯函数模块）；加载真实源码以保持测试对发行物的忠实。
+const provenanceSource = String(
+  readFileSync(join(dirname(bundle), "services", "memory-provenance.js"), "utf8"),
+).replace(/^export /gm, "");
 const sessionID = "compacted-fixture";
 const directory = "/fixture/project";
 const model = { providerID: "session-provider", id: "session-model" };
@@ -52,7 +58,8 @@ function fixture(current = session, options = {}) {
   if (options.noGet) delete client.session.get;
   const context = vm.createContext({
     ctx: { client }, directory,
-    Date: { now: () => 123 },
+    // 必须是可构造的 Date 子类：memory-provenance 里有 `value instanceof Date` / `new Date(...)`。
+    Date: class extends globalThis.Date { static now() { return 123; } },
     CONFIG: { compaction: { enabled: options.enabled ?? true, memoryLimit: 7 } },
     isConfigured: () => options.configured ?? true,
     getTags: (path) => {
@@ -67,7 +74,7 @@ function fixture(current = session, options = {}) {
     },
     log: (...args) => effects.logs.push(structuredClone(args)),
   });
-  vm.runInContext(`${functions}\nconst EMBEDDED_TAGS_FOOTER_RE = /\\n*Tags: ([^\\n]*)\\s*$/;`, context);
+  vm.runInContext(`${provenanceSource}\n${functions}\nconst EMBEDDED_TAGS_FOOTER_RE = /\\n*Tags: ([^\\n]*)\\s*$/;`, context);
   const event = vm.runInContext(eventHook, context);
   return {
     effects,

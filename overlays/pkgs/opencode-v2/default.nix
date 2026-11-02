@@ -11,17 +11,17 @@
 # 哈希为 nix-prefetch-url 对 tarball 实测的内容哈希，并已与 npm 元数据
 # dist.integrity（sha512）交叉校验一致。
 let
-  version = "2.0.32";
+  version = "2.2.5";
 
   # 平台 → npm 平台包 CPU 后缀 + 实测 sha256（nix-prefetch-url 输出转 SRI）
   targets = {
     x86_64-linux = {
       cpu = "x64";
-      hash = "sha256-ZKH0s4HC0u/BjI12ss45kUF3i0IbVMmLlL6OgIA2Btw=";
+      hash = "sha256-kmkO7gemgNPLdgygK6Q4eN6eqxtOXV366HlVGMU2KPQ=";
     };
     aarch64-linux = {
       cpu = "arm64";
-      hash = "sha256-uEkjLsYdm2JNHEieVpWfU5Vm6xT45bKvXFTvI3EYz2M=";
+      hash = "sha256-+MWoIHX+3ptbBE7WyKbROtgHp+YsrqHNCoeK3vSesFM=";
     };
   };
 
