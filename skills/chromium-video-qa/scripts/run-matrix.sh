@@ -26,21 +26,20 @@ awk -F '\t' '
 
 cp "$manifest" "$output_dir/manifest.tsv"
 fixture_dir="$(cd "$(dirname "$manifest")" && pwd)"
-for artifact in ffprobe.txt SHA256SUMS; do
-  [[ -f "$fixture_dir/$artifact" ]] &&
-    cp "$fixture_dir/$artifact" "$output_dir/$artifact"
+for artifact in ffprobe.txt ffprobe-resolution.txt SHA256SUMS; do
+  [[ -f "$fixture_dir/$artifact" ]] && cp "$fixture_dir/$artifact" "$output_dir/$artifact"
 done
 
 "$script_dir/probe-target.sh" >"$output_dir/probe.txt" 2>&1
 summary="$output_dir/summary.tsv"
-printf 'id\tstatus\tmode\tcodec\tprofile\tbit_depth\tpixel\texit_code\n' >"$summary"
+printf 'id\tplayback\thw_path\towned_cleanup\tglobal_idle\toverall\tmode\tcodec\tprofile\tbit_depth\tpixel\texit_code\n' >"$summary"
 
 failed=0
 blocked=0
 while IFS=$'\t' read -r id mode media mime codec profile bit_depth pixel hold; do
   [[ -z "$id" || "$id" == \#* ]] && continue
-
-  rm -f "$output_dir/$id-result.tsv"
+  result_file="$output_dir/$id-result.tsv"
+  rm -f -- "$result_file"
   set +e
   OUTPUT_DIR="$output_dir" "$script_dir/run-scenario.sh" \
     "$id" "$mode" "$media" "$mime" "$codec" "$profile" \
@@ -48,20 +47,62 @@ while IFS=$'\t' read -r id mode media mime codec profile bit_depth pixel hold; d
   rc=$?
   set -e
 
-  status=PASS
-  if [[ "$rc" -eq 3 ]]; then
-    status=BLOCKED
-    blocked=1
-  elif [[ "$rc" -ne 0 ]]; then
-    status=FAIL
-    failed=1
+  playback=PLAYBACK_UNKNOWN
+  hw_path=HW_PATH_UNKNOWN
+  owned_cleanup=OWNED_CLEANUP_UNKNOWN
+  global_idle=GLOBAL_IDLE_UNKNOWN
+  overall=OVERALL_FAIL
+  valid=0
+  if [[ -f "$result_file" && ! -L "$result_file" ]]; then
+    mapfile -t result_lines <"$result_file"
+    if [[ ${#result_lines[@]} -eq 1 ]]; then
+      IFS=$'\t' read -r result_id playback hw_path owned_cleanup global_idle overall \
+        result_codec result_profile result_bit_depth result_pixel extra <<<"${result_lines[0]}"
+      if [[ -z "$extra" && "$result_id" == "$id" && "$result_codec" == "$codec" &&
+          "$result_profile" == "$profile" && "$result_bit_depth" == "$bit_depth" &&
+          "$result_pixel" == "$pixel" &&
+          "$playback" =~ ^PLAYBACK_(PASS|FAIL|BLOCKED|UNKNOWN|UNSUPPORTED)$ &&
+          "$hw_path" =~ ^HW_PATH_(OBSERVED|NOT_OBSERVED|FAIL|BLOCKED|UNKNOWN)$ &&
+          "$owned_cleanup" =~ ^OWNED_CLEANUP_(PASS|FAIL|NOT_RUN|UNKNOWN)$ &&
+          "$global_idle" == GLOBAL_IDLE_UNKNOWN &&
+          "$overall" =~ ^OVERALL_(INCONCLUSIVE_ROOTLESS|FAIL|BLOCKED|UNSUPPORTED)$ ]]; then
+        valid=1
+      fi
+    fi
   fi
-  if [[ -f "$output_dir/$id-result.tsv" ]]; then
-    read -r _ status _ <"$output_dir/$id-result.tsv"
+  if [[ "$valid" != 1 ]]; then
+    echo "missing or malformed scenario result: $id" >&2
+    playback=PLAYBACK_UNKNOWN
+    hw_path=HW_PATH_UNKNOWN
+    owned_cleanup=OWNED_CLEANUP_UNKNOWN
+    global_idle=GLOBAL_IDLE_UNKNOWN
+    overall=OVERALL_FAIL
+  elif [[ "$overall" == OVERALL_INCONCLUSIVE_ROOTLESS ]]; then
+    if [[ "$rc" -eq 0 || "$playback" != PLAYBACK_PASS ||
+        "$owned_cleanup" != OWNED_CLEANUP_PASS ||
+        ! "$hw_path" =~ ^HW_PATH_(OBSERVED|NOT_OBSERVED)$ ]]; then
+      overall=OVERALL_FAIL
+    fi
+  elif [[ "$overall" == OVERALL_BLOCKED ]]; then
+    if [[ "$rc" -ne 3 || "$playback" != PLAYBACK_BLOCKED ||
+        "$owned_cleanup" != OWNED_CLEANUP_NOT_RUN ]]; then
+      overall=OVERALL_FAIL
+    fi
+  elif [[ "$overall" == OVERALL_UNSUPPORTED ]]; then
+    if [[ "$rc" -ne 1 || "$playback" != PLAYBACK_UNSUPPORTED ]]; then
+      overall=OVERALL_FAIL
+    fi
+  elif [[ "$rc" -eq 0 ]]; then
+    overall=OVERALL_FAIL
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$id" "$status" "$mode" "$codec" "$profile" "$bit_depth" \
-    "$pixel" "$rc" >>"$summary"
+
+  case "$overall" in
+    OVERALL_BLOCKED) blocked=1 ;;
+    OVERALL_INCONCLUSIVE_ROOTLESS|OVERALL_FAIL) failed=1 ;;
+  esac
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$id" "$playback" "$hw_path" "$owned_cleanup" "$global_idle" "$overall" \
+    "$mode" "$codec" "$profile" "$bit_depth" "$pixel" "$rc" >>"$summary"
 
   [[ "$blocked" == 0 ]] || break
 done <"$manifest"

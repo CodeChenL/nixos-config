@@ -1,97 +1,72 @@
-# 平台证据与报告格式
+# Linux evidence 与报告
 
-只读取并执行当前目标平台对应的小节。工具缺失时选择已有的等价只读证据；不要为了
-QA 擅自安装软件。
+## 其他平台（手动）
 
-## Linux
+可执行 harness 目前只覆盖 Linux。其他桌面/移动平台按下面的证据来源手动执行同一套
+结论层级（能力上报、decoder 初始化、持续硬解、渲染、清理分别陈述），无法确认硬件
+backend 时保持 INCONCLUSIVE：
 
-先辨认 Firefox 实际选择的 backend，例如 FFmpeg/V4L2-M2M、VA-API、Vulkan Video、
-软件 FFmpeg 或其他发行版模块。常用证据包括：
+- Windows：Firefox PlatformDecoderModule/MediaDecoder 日志、decoder 硬件标志、
+  D3D11/DXVA device/texture 创建与失败、与 Firefox 进程关联的 GPU Video Decode engine
+  计数器；必要时补充 ETW/GPUView。
+- macOS：decoder 日志与硬件标志、VideoToolbox session/pixel buffer/IOSurface 输出、
+  powermetrics 或 Instruments 中与被测进程关联的媒体/GPU 证据。
+- Android：decoder 日志、MediaCodec codec 名、logcat、codec service 状态与页面时间线。
 
-- RDD/GPU/content 进程的命令行、父子关系和已映射媒体库；
-- `/dev/video*`、`/dev/dri/render*` 的测试前、中、后使用者；
-- `v4l2-ctl`、GStreamer capability、`vainfo` 或等价运行时枚举；
-- V4L2 format/source-change、queue/dequeue、DMA-BUF export/import 日志；
-- VA-API/Vulkan device、surface 和 frame export/import 日志；
-- 可用时的 runtime PM、tracepoint、debugfs 或性能计数器。
+每个平台都要同时采集页面 EOS/帧/错误指标和设备或 surface 证据，并按 PID 与 decoder
+实例关联；仅设备占用或初始化成功不能升级为硬件 PASS。
 
-设备节点编号、驱动名、raw format、sysfs 路径和 compositor 均需运行时发现，不得写死
-为某块板卡。`about:support` 的 Hardware Supported、wrapper 初始化成功和一次
-`/dev/video` 占用都不是持续硬解证明。
+## Evidence allowlist
 
-Linux 多进程日志可能在同一行交错。按 PID 和 PTS 交叉核对页面 `OnVideoDecoded`、
-VideoSink 和 backend frame 日志；保留原始文件，并在计数差异是日志拼接而非丢帧时
-明确说明依据。
+远端 `evidence.tar` 只能包含以下固定成员：
 
-## Windows
+- `scenario.json`、`runtime.json`、`outcome.json`、`result.json`；
+- `firefox.stdout`、`firefox.stderr`、`decoder-logs.tar`；
+- `observe-before.jsonl`、`observe-during.jsonl`、`observe-after.jsonl`；
+- `cleanup.json`。
 
-辨认 Firefox 是否使用 Windows Media Foundation、D3D11/DXVA 或软件 decoder。组合：
+本地另外生成 `probe.json`、`transport.json`、`timeline.json`、`verdict.json` 和 matrix
+`summary.json`。`decoder-logs.tar` 只包含 run root 顶层、名称严格匹配
+`decoder.log(.child-N).moz_log` 的 raw files。不得递归复制 profile，也不得收集 cookies、
+Glean、sessionstore、history、cache、credentials 或用户 URL。
 
-- Firefox PlatformDecoderModule/MediaDecoder 日志；
-- decoder description、硬件标志、D3D device/texture 创建与失败；
-- Firefox 进程级 GPU Video Decode engine；
-- 必要时使用 ETW、GPUView、Windows Performance Recorder 或厂商计数器；
-- 页面帧、错误、EOS 和 fallback 时间线。
+## Rootless snapshots
 
-任务管理器中的 Video Decode 曲线只是佐证。必须关联到被测 Firefox 进程和播放窗口，
-并排除其他浏览器或播放器。
+JSONL process record 包含 phase、completeness、PID/start time/SID、Firefox role、可见
+`/dev/videoN`/`/dev/dri/renderDN` fd 和媒体 library maps。before/after 还记录可见的外部
+device owners，但不记录它们的 argv。rootless 观察无法突破 hidepid/LSM；任何本次 session
+的不透明状态使 cleanup 或 hardware evidence 非 PASS，不能用“空输出”当作空闲证明。
 
-## macOS
+## 六轴 verdict
 
-辨认 VideoToolbox/Apple decoder 与软件路径。组合：
+| 轴 | PASS | FAIL | INCONCLUSIVE |
+|---|---|---|---|
+| `hardware_path` | playback-correlated hardware chain 全部成立 | 明确 fallback/decode/import error | 缺任一正证据 |
+| `rendering` | 有 RVFC frame，full/seek 达标并到 EOS | media/play error | frame callback、seek 后呈现或 EOS 不足 |
+| `quality` | corrupted metric 明确为 zero | corrupted > 0 | metric null/undefined/API unavailable |
+| `cleanup` | browser/session/profile/temp root 全部释放 | 残留或身份不符 | `/proc`/identity 不透明而保留 |
+| `performance` | performance profile 且预声明 threshold 内 | 超过 threshold | 无 threshold 或 evidence profile instrumented |
+| `overall` | 所有 required axes PASS | 任一 required axis FAIL | 否则 |
 
-- Firefox decoder 日志和硬件标志；
-- VideoToolbox session、pixel buffer/IOSurface 输出和错误；
-- Activity Monitor、`powermetrics` 或 Instruments 中与 Firefox 对应的媒体/GPU 证据；
-- 页面帧、错误、EOS 和 fallback 时间线。
+`droppedVideoFrames` 是 performance 数据，不是 corruption。没有预声明 threshold 时，即使
+为零也不能把 performance 自动升级为 PASS。`corruptedVideoFrames=null` 必须保留为
+quality INCONCLUSIVE。
 
-需要提权的工具必须先取得授权。仅看到低 CPU 或 IOSurface 不足以证明指定 codec 的
-硬件 decoder 持续工作。
+preflight 发现可见外部 `/dev/videoN` owner 或本 UID process opacity 时，harness 写
+`outcome.json`（`status=BLOCKED`）并以 exit 3 结束，不产生 verdict；报告必须原样列出该
+BLOCKED 原因，不得把“未运行”写成 PASS。
 
-## Android 及其他平台
+## 报告要求
 
-Android 通常关联 Firefox decoder 日志、MediaCodec codec 名、`logcat`、codec service
-和页面证据。其他平台先从当前 Firefox 源码和运行时确定 backend，再选择对应的系统
-观测工具；不要把某个平台的日志关键字或设备模型推广为通用规则。
+报告按 scenario 列出 Firefox/version/Build ID、media hash/ffprobe identity、trace profile、
+tracking ID、decoder instance、RDD/device/maps、first/seek/terminal hardware PTS、DMA-BUF
+import、页面 EOS/frame metrics、fallback、cleanup 和六轴 verdict。结论必须指向 raw evidence
+位置，不以 grep count 代替 timeline。
 
-## Fallback 判定
+首次失败与后续重试必须分别保留。共享设备 owner、rootless visibility 限制、缺失工具和
+未执行的安装/部署/重启/系统修改应显式列出。机器 verdict 与叙述不一致时，以更保守的
+结论为准并修复 harness；不得手工把缺失证据改成 PASS。
 
-以下组合是强 fallback 证据：
-
-```text
-hardware decoder 初始化成功
-→ 首包/首帧错误或 surface import 失败
-→ flush/shutdown
-→ HardwareDecoderNotAllowed 或 software decoder 初始化
-→ 后续页面继续播放
-```
-
-以下事件单独出现时不能判 fallback：
-
-- capability probe 创建并销毁 decoder；
-- seek 或 EOS 时 `ProcessFlush()`；
-- 一次 `IsHardwareAccelerated=false`，但无法关联到实际播放实例；
-- 软件 decoder 与硬件 probe 的交错日志；
-- 硬件设备仍被其他进程持有。
-
-## 建议的报告表
-
-| 场景 | Firefox/库身份 | 输入身份 | 能力 | backend 初始化 | 持续硬解 | 页面/EOS | 帧与错误 | 并发/重试 | 清理 | 结论 |
-|---|---|---|---|---|---|---|---|---|---|---|
-
-每个结论使用以下之一：
-
-- `PASS`：持续硬件解码、渲染和清理全部成立；
-- `FAIL`：产品或集成行为不满足场景；
-- `UNSUPPORTED`：能力交集明确为空；
-- `BLOCKED`：缺权限、fixture 或可用运行环境；
-- `INCONCLUSIVE`：证据不足以区分硬件和软件。
-
-报告末尾分别列出：
-
-1. 已验证事实及原始证据；
-2. 仅由能力表或源码推断、尚未运行验证的事项；
-3. 首次失败与每次重试的差异；
-4. 外部并发负载；
-5. 未执行的安装、部署、重启或系统修改；
-6. 清理后的进程、端口、设备和 profile 状态。
+完成运行中的 Firefox 155.0.1 示例应报告：`hardware_path=PASS`、`rendering=PASS`、
+`quality=INCONCLUSIVE`、`cleanup=PASS`、`performance=INCONCLUSIVE`、
+`overall=INCONCLUSIVE`，原因分别是 corruption metric 为 null 且 dropped threshold 未预声明。

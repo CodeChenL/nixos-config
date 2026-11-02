@@ -1,197 +1,121 @@
-# Firefox 视频解码 QA 流程
+# Linux Firefox 视频解码 QA 流程
 
-## 1. 建立身份和边界
+## 1. 本地身份门
 
-每轮重新记录，不复用旧报告代替当前状态：
+先建立 canonical JSON manifest，再运行 `scripts/validate-manifest.sh`。校验完成前不得执行
+probe 之外的目标连接，尤其不得先复制样片后补 hash。每个场景必须绑定绝对媒体路径、
+SHA-256、MIME/container、codec/profile、bit depth/chroma、width/height/fps/duration、
+expected frames/output、mode、seek target 和可选 dropped threshold。
 
-- Firefox 可执行文件的绝对路径、版本、Build ID、发行渠道和启动参数；
-- OS、架构、内核、图形会话、显示服务器和远程/本地执行方式；
-- Firefox 实际加载的媒体库及版本，而不是仅记录系统已安装包；
-- 可用硬件 decoder、设备节点、驱动和平台 API；
-- 是否有其他浏览器、转码任务或 HIL 正在共享解码器；
-- 用户允许的操作，以及禁止安装、重启、kill、部署或改 profile 等边界。
+已有样片必须满足同一契约；文件名、旧报告和 encoder 参数都不能替代当前 ffprobe。
+生成标准样片可使用 `scripts/generate-fixtures.sh`，其输出由 package 内的 manifest builder
+再次校验。
 
-在支持进程映射检查的平台，记录实际库路径。例如 Linux 可检查 RDD/GPU 进程的
-`/proc/<pid>/maps`；其他平台使用对应的模块/映像检查工具。包版本不等于运行时库身份。
+1080p/4K 压力矩阵必须显式启用：
 
-为本次运行建立精确的临时目录和 PID 清单。profile、日志、fixture 副本、自动化端口
-和 tunnel 都要在创建前加入清理清单。
-
-## 2. 建立能力矩阵
-
-矩阵来自三个集合的交集：
-
-1. Firefox 当前构建能够解析的 container/codec；
-2. 当前平台在运行时提供的 decoder/profile/位深；
-3. 有确定身份且可以合法使用的测试样片。
-
-推荐字段：
-
-| 字段 | 含义 |
-|---|---|
-| `id` | 稳定的场景名称 |
-| `media` | 样片绝对路径或受控 URL |
-| `sha256` | 样片内容身份 |
-| `container` / `mime` | 容器和 MIME/codec string |
-| `codec` / `profile` | bitstream 实际解析结果 |
-| `bit_depth` / `chroma` | 位深和色度格式 |
-| `size` / `fps` / `duration` | 解码负载 |
-| `expected_frames` | 可比较的输入帧数 |
-| `mode` | full、seek、loop、resolution-change 等 |
-| `expected_output` | 平台相关的 raw/texture 格式，如 NV12、P010 |
-
-使用 `ffprobe`、`mediainfo`、容器解析器或平台原生工具确认样片，不根据文件名猜 profile
-和位深。若生成 fixture，在独立主机上生成并保留生成命令和哈希，不让被测解码路径同时
-承担 fixture 生成。
-
-普通正确性矩阵至少覆盖用户关心的每个 codec 的一个典型 8-bit 场景；平台广告 10-bit
-时增加对应场景。seek、flush、EOS、分辨率变化和多流属于额外行为矩阵，按任务风险
-选择，不为凑数量穷举 profile 名称。
-
-## 3. 启动真实 Firefox
-
-每个场景都启动新的被测 Firefox 父进程和新的 profile：
-
-```text
-firefox --no-remote --new-instance --profile <isolated-profile> <qa-url>
+```sh
+RESOLUTION_MATRIX=1 scripts/generate-fixtures.sh <fixture-dir>
 ```
 
-命令仅示意；按平台使用正确的可执行文件和参数。不得让自动化框架偷偷改用它自带的
-Firefox。优先使用 Firefox Remote Agent/WebDriver BiDi、Marionette 或能够明确指定
-被测二进制的 WebDriver。若 Playwright 只能驱动其定制 Firefox，则不要用它证明系统
-Firefox 的媒体行为。
+该命令先维持原有 6 场景 `manifest.json`，再额外生成 canonical
+`manifest-resolution.json`。后者包含 H.264 High、HEVC Main、HEVC Main10、VP9 Profile 0
+和 VP9 Profile 2 与 1080p30、1080p60、4k30、4k60 的笛卡尔积，共 20 个 full/evidence
+场景；4k 固定为 3840x2160。`DURATION` 同时控制标准与分辨率 fixture，默认 6 秒。
+运行该矩阵前应单独执行
+`scripts/validate-manifest.sh <fixture-dir>/manifest-resolution.json`，不得以标准 manifest 的
+校验结果替代。
 
-页面可以是受控的 loopback HTTP 页面或本地 fixture 页面。至少采集：
+本地和远端 Python harness 都要求 Python 3.12+（transfer package 使用 3.12 的 `type`
+语句）。从 skill 根运行
+`uv run --project . pytest -q`，uv 按 `uv.lock` 创建隔离环境并安装已声明的 pytest；不得依赖
+系统 pytest 或残留 `.venv`。Ruff 与 BasedPyright 是开发机静态工具，不是远端运行依赖。
 
-```js
-const q = video.getVideoPlaybackQuality?.();
-({
-  currentTime: video.currentTime,
-  duration: video.duration,
-  ended: video.ended,
-  readyState: video.readyState,
-  networkState: video.networkState,
-  errorCode: video.error?.code ?? null,
-  errorMessage: video.error?.message ?? null,
-  totalVideoFrames: q?.totalVideoFrames ?? null,
-  droppedVideoFrames: q?.droppedVideoFrames ?? null,
-  corruptedVideoFrames: q?.corruptedVideoFrames ?? null,
-});
-```
+## 2. Runtime probe
 
-可用时用 `requestVideoFrameCallback` 记录呈现帧和 media time。MediaCapabilities、
-`canPlayType()` 和 `about:support` 也要保存，但只能作为能力层证据。
+`scripts/probe-target.sh TARGET FIREFOX` 通过 `ssh -n` 采集 JSON：OS/kernel/arch、Firefox
+路径与版本、ELF notes、`/sys/class/video4linux` 设备、`vainfo`、`v4l2-ctl` 和工具可用性。
+不得为 probe 安装工具。缺少某项时将对应能力标为未知；不要用源码能力表替代 runtime。
 
-等待媒体状态或 EOS，不使用固定睡眠代替状态判定。若目标是长测，则使用明确的播放
-轮数、时长或帧数停止条件。
+执行矩阵必须是以下三者交集：
 
-## 4. 收集 decoder 和平台证据
+1. 当前 Firefox 能解析的 container/codec；
+2. 目标 runtime 实际广告的 decoder/profile/output；
+3. 已通过 manifest 校验的 fixture。
 
-Firefox 的通用日志入口可从以下模块开始，并根据当前源码和平台增加实际存在的模块：
+交集为空时报告 `UNSUPPORTED`；缺工具、显示会话或样片时报告 `BLOCKED`。
 
-```text
-PlatformDecoderModule:5
-MediaDecoder:5
-```
+## 3. 场景生命周期
 
-使用 FFmpeg 的 Linux 构建通常还需要：
+`run-matrix.sh` 只串行调用 scenario。每次运行：
 
-```text
-FFmpegVideo:5
-FFmpegLib:5
-Dmabuf:5
-```
+1. 本地再次验证完整 manifest，保证第一次 SSH 前 hash 与 ffprobe 已通过；
+2. 远端以 `mktemp` 创建 `/tmp/firefox-video-qa.XXXXXXXXXXXX`，写入 128-bit token 和 boot ID；
+3. 只复制固定 harness files、单个 scenario manifest 和单个 media；
+4. 远端再次验证 hash/ffprobe；创建独立 0700 profile 前先做 rootless before snapshot，可见
+   外部 `/dev/videoN` owner 或同 UID opaque process 时写 `outcome.json` 并以 `BLOCKED`
+   退出，不启动浏览器、不发送 signal；
+5. loopback server 使用随机端口，Firefox 以 `--no-remote --new-instance --profile` 和新
+   `setsid` 启动；stdin 为 `/dev/null`；身份捕获会等待进程镜像变为传入 FIREFOX 路径的
+   basename 后才绑定 exe/Build ID（NixOS wrapper `bin/firefox` 会 exec
+   `lib/firefox/firefox`）；wrapper exec 不同名的二进制时必须改传真实 ELF 路径；
+6. 页面按媒体状态到 EOS/错误/timeout，不用固定 sleep 判断播放完成；
+7. rootless observer 保存 before/during/after process/device snapshot；
+8. 生成 raw decoder archive、normalized timeline、cleanup 和 multi-axis verdict；
+9. 只复制 allowlist，随后执行 fail-closed 删除门。
 
-不要假定日志模块在所有版本和平台都同名；若没有输出，先核对当前 Firefox 源码或日志
-模块注册，而不是把无日志解释为未使用硬件。
+允许透传的远端环境变量仅限显示/session 项：`DISPLAY`、`WAYLAND_DISPLAY`、
+`XDG_RUNTIME_DIR`、`XDG_SESSION_TYPE`、`DBUS_SESSION_BUS_ADDRESS` 和
+`MOZ_ENABLE_WAYLAND`。不接受任意 Firefox flags。
 
-从日志中建立同一 decoder 实例的时间线：
+## 4. 页面与 result server
 
-```text
-选择 backend
-→ 初始化
-→ 首包/首帧
-→ 连续输出
-→ seek/flush 或 EOS
-→ shutdown
-```
+页面记录 `getVideoPlaybackQuality()` 的 API availability，并把每个 metric 明确编码为
+`unavailable`、`null`、`zero` 或 `nonzero`。`requestVideoFrameCallback` 保存 media time
+和 presented frame number；seek 场景必须在 `seeked` 后出现 `mediaTime >= seek_target`。
 
-重点寻找：
+页面只向 `127.0.0.1` POST 一次。endpoint 与 body 都携带随机 token。server 限制 body
+大小，严格校验 scenario/mode/result schema，使用 `O_EXCL` 原子创建 `result.json`；重复
+POST 返回 409，错误 token/schema 被拒绝。
 
-- decoder 描述和进程位置（RDD、GPU、content、utility 等）；
-- hardware accelerated 状态及其失败原因；
-- packet/frame 错误、格式协商、surface/texture import；
-- `HardwareDecoderNotAllowed` 或软件 decoder 重建；
-- 首帧后硬件设备提前释放；
-- 正常 EOS 与错误 flush 的顺序差异。
+## 5. Timeline 与 fallback
 
-同时采集当前平台的硬件证据，具体选择见
-[evidence-and-reporting.md](evidence-and-reporting.md)。设备占用只证明某进程打开了接口，
-不能单独证明它持续解出了正在呈现的视频。
+保留全部 raw MOZ_LOG，并生成 sequence-ordered `timeline.json`。分析只接受
+`ChannelDecoder-*` playback tracking；`MediaCapabilities-*` 和启动期软件 codec probe
+属于 capability noise。硬件 PASS 需要：
 
-## 5. 判定场景
+- playback tracking 先于 hardware codec selection；
+- RDD `MediaPDecoder` instance 与 `IsHardwareAccelerated=true`；
+- VA-API frame 到 full terminal PTS，seek 时还要覆盖 seek target 后到 terminal PTS；
+- 同一运行 session 的 RDD 持有 `/dev/videoN`；
+- RDD maps 同时出现 `libavcodec`、`libva` 和 V4L2 VA driver；
+- expected output 的 DMA-BUF import 和 renderer zero-copy import；
+- playback window 内没有 error、`HardwareDecoderNotAllowed` 或软件 reconstruction。
 
-### PASS
+`ProcessFlush()` 单独不是 fallback。seek 后继续出现目标 VA-API frames 是恢复；只有 flush
+与 error、hardware disallow 或 playback software reconstruction 组合才是 fallback。
+软件 capability probe 单独出现也不是 fallback。
 
-同时满足：
+## 6. Evidence 与 performance profile
 
-- 页面无 media/play error，达到目标时间、帧数或 EOS；
-- decoded/presented frame 数与 fixture 和场景合理一致；
-- corrupted frame 为零，dropped frame 在事先声明的阈值内；
-- decoder 日志和平台证据共同表明硬件 backend 持续工作；
-- 没有在场景完成前重建为软件 decoder；
-- 测试资源成功清理，共享设备恢复到基线或只剩测试前已有使用者。
+`evidence` profile 启用完整 decoder/FFmpeg/libva/DMA-BUF logs 和高频 rootless snapshot，
+其 timing、CPU 和 dropped metrics 均标为 instrumented，不可产生 performance PASS。
+`performance` profile 降低日志量，但仍保留硬件身份门；只有 manifest 在运行前声明
+`dropped_threshold`，且实际 dropped frames 不超过该值，performance 才能 PASS。
 
-### FAIL
+阈值必须来自产品要求或事先批准的基线，不能在看到结果后补写。性能 PASS 不能替代
+hardware_path、rendering 或 quality。
 
-包括 decode error、格式或 surface import 错误、首帧后软件回退、页面未前进、错误 EOS、
-超出阈值的损坏/丢帧，或无法清理本次测试资源。
+## 7. Cleanup
 
-### UNSUPPORTED
+浏览器 parent identity 固定为 boot ID、PID、start time、profile、token、SID、PGID，以及
+实际 `/proc/<pid>/exe` 和该 ELF 的 GNU Build ID。TERM 前重新读取全部字段（含 exe/Build
+ID）；5 秒后仍存活时，KILL 前再读一次。只向通过验证的独立 PGID 发信号。若 parent 已自然
+退出，不发送信号。
 
-能力交集明确为空，例如 Firefox 不支持容器、平台不广告该 profile，或输出格式无法被
-当前 compositor 接受。必须给出所缺集合的证据。
+删除前再次验证 run root owner、token、boot、stored profile，并确认 parent 不存活、记录
+SID/PGID 无成员。任何同用户 process 不透明、PID reuse、start-time mismatch、token/profile
+不符或残留 process 都拒绝删除。绝不终止外部 process。保留的精确路径写入
+`transport.json`，cleanup 轴不得 PASS。
 
-### BLOCKED / INCONCLUSIVE
-
-fixture、权限、显示会话、可观察性或共享硬件竞争使结论不可靠。播放软件成功不能把
-此状态升级为硬件 PASS。
-
-## 6. 重试和并发 HIL
-
-先区分产品失败与 harness/环境失败。允许重试时：
-
-1. 保存首次失败及其并发使用者、日志和时间戳；
-2. 终止并清理本次创建的精确 Firefox 实例；
-3. 使用全新 profile、日志前缀和 attempt ID；
-4. 在干净窗口重跑，或明确记录用户允许的并发 HIL；
-5. 报告首次失败和重试结果，不能用成功覆盖失败历史。
-
-重试仅用于排除环境污染。相同产品错误稳定复现后应停止盲目重跑并进入根因调查。
-
-## 7. 性能阶段
-
-正确性 PASS 后再测：
-
-- 实时倍率、启动延迟和 seek 恢复时间；
-- 浏览器各进程 CPU 时间，而不是整机瞬时百分比；
-- GPU/video engine、decoder utilization、频率和功耗；
-- dropped/presented frames 与 compositor 丢帧；
-- 多流、分辨率和帧率扩展点。
-
-固定 governor、显示状态、窗口可见性和其他负载，或在报告中明确它们没有被控制。单纯
-低 CPU 或 GPU 活跃都不能替代 decoder 身份证据。
-
-## 8. 清理和最终复核
-
-按创建清单逆序清理：
-
-- 先核对父 PID 的命令行和隔离 profile，再终止该精确 PID；
-- 等待其子进程退出，不使用模糊 `pkill`；
-- 关闭本次创建的自动化端口、tunnel 和 loopback server；
-- 删除精确的临时 profile、日志和 fixture 副本；
-- 验证不存在本次 QA Firefox，设备句柄回到基线；
-- 区分外部 HIL 占用和本次残留，不终止外部使用者；
-- 若改过临时环境变量、偏好或策略，恢复并验证原值。
-
-最终报告必须能让下一位执行者从二进制身份、fixture 哈希和原始证据重现同一结论。
+退出码 0 只表示 `overall=PASS`。任一 FAIL/INCONCLUSIVE、harness 错误、证据复制失败或
+清理拒绝均返回非零；不得用退出码覆盖 `verdict.json` 的具体原因。

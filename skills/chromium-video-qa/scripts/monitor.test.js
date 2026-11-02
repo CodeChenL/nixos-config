@@ -8,7 +8,7 @@ const path = require('node:path');
 const {spawn} = require('node:child_process');
 const {check} = require('./check-observation');
 
-test('TERM drains an in-flight observer sample without fabricating UNKNOWN', {timeout: 5000}, async () => {
+test('TERM drains an in-flight rootless sample without fabricating UNKNOWN', {timeout: 5000}, async () => {
   const state = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-monitor-stop-'));
   const transport = path.join(state, 'transport.js');
   fs.writeFileSync(transport, `
@@ -16,7 +16,7 @@ test('TERM drains an in-flight observer sample without fabricating UNKNOWN', {ti
     const state = process.argv[2];
     const watcher = fs.watch(state, () => {
       if (fs.existsSync(state + '/release')) {
-        console.log('BEGIN\\t${'a'.repeat(32)}\\tpid:[1]\\t321\\nEND\\t${'a'.repeat(32)}');
+        console.log('ROOTLESS_OBSERVATION_V1\\nBEGIN\\t${'a'.repeat(32)}\\t11111111-2222-4333-8444-555555555555\\tpid:[1]\\t1000\\t321\\nEND\\t${'a'.repeat(32)}');
         watcher.close();
       }
     });
@@ -26,7 +26,7 @@ test('TERM drains an in-flight observer sample without fabricating UNKNOWN', {ti
   const started = new Promise((resolve) => {
     watcher = fs.watch(state, () => { if (fs.existsSync(state + '/started')) resolve(); });
   });
-  const child = spawn('setsid', ['bash', path.join(__dirname, 'monitor-observer.sh'), '10',
+  const child = spawn('setsid', ['bash', path.join(__dirname, 'monitor-rootless.sh'), '10',
     'mock', 'a'.repeat(32), '/tmp/chromium-video-qa.ABCDEF123456', '/dev/video0',
     process.execPath, transport, state]);
   let output = '';

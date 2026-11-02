@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Firefox video QA</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #111; color: #eee; }
+  video { width: 100%; height: 100%; object-fit: contain; }
+  pre { position: fixed; inset: 12px auto auto 12px; padding: 10px; background: #000d; }
+</style>
+<video id="video" muted autoplay playsinline></video>
+<pre id="status">loading</pre>
+<script src="/telemetry.js"></script>
+<script>
+  'use strict';
+  const params = new URLSearchParams(location.search);
+  const video = document.querySelector('#video');
+  const status = document.querySelector('#status');
+  const token = params.get('run') || '';
+  const scenarioId = params.get('id') || '';
+  const mode = params.get('mode') || '';
+  const seekTarget = Number(params.get('seekTarget') || 0);
+  const timeoutMs = Number(params.get('timeoutMs') || 45000);
+  const mime = params.get('mime') || '';
+  const profile = params.get('profile') || 'evidence';
+  const frameCallbacks = [];
+  let lastRender = 0;
+  const terminalStates = new Set(['ended', 'media-error', 'play-error', 'timeout', 'harness-error']);
+  let qualityApiAvailable = false;
+  let seekRequested = false;
+  let seekCompleted = false;
+  let state = 'loading';
+  let error = null;
+  let mediaCapabilities = {
+    canPlayType: '',
+    mediaCapabilitiesState: 'unavailable',
+    supported: null,
+    smooth: null,
+    powerEfficient: null,
+    error: null,
+  };
+  let capabilityPromise = Promise.resolve();
+
+  const post = FirefoxQaTelemetry.createReporter(async (url, result) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(result),
+      credentials: 'omit',
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`result POST failed: ${response.status}`);
+  });
+
+  function result() {
+    const quality = qualityApiAvailable ? video.getVideoPlaybackQuality() : {};
+    const metric = (name) => FirefoxQaTelemetry.metricState(quality[name], qualityApiAvailable);
+    const postSeekPresented = seekCompleted && frameCallbacks.some((frame) => frame.mediaTime >= seekTarget);
+    return {
+      schemaVersion: 1,
+      runToken: token,
+      scenarioId,
+      mode,
+      state,
+      currentTime: video.currentTime || 0,
+      duration: Number.isFinite(video.duration) ? video.duration : 0,
+      presentedFrames: frameCallbacks.length,
+      postSeekPresented,
+      frameCallbacks,
+      capabilities: mediaCapabilities,
+      quality: {
+        api: qualityApiAvailable ? 'available' : 'unavailable',
+        totalVideoFrames: metric('totalVideoFrames'),
+        droppedVideoFrames: metric('droppedVideoFrames'),
+        corruptedVideoFrames: metric('corruptedVideoFrames'),
+      },
+      error,
+    };
+  }
+
+  function render(force = false) {
+    const now = performance.now();
+    if (!force && !FirefoxQaTelemetry.shouldRenderFrame(profile, lastRender, now)) return;
+    lastRender = now;
+    status.textContent = JSON.stringify(result(), null, 2);
+    document.title = `QA:${state}`;
+  }
+
+  async function finish(nextState, nextError = null) {
+    if (terminalStates.has(state)) return;
+    state = nextState;
+    error = nextError === null ? null : String(nextError);
+    await capabilityPromise;
+    const payload = result();
+    render(true);
+    await post(`/result/${token}`, payload);
+  }
+
+  function onFrame(_now, metadata) {
+    if (frameCallbacks.length < 10000) {
+      frameCallbacks.push({mediaTime: metadata.mediaTime, presentedFrames: metadata.presentedFrames});
+    }
+    render();
+    if (!video.ended) video.requestVideoFrameCallback(onFrame);
+  }
+
+  video.addEventListener('loadedmetadata', async () => {
+    state = 'playing';
+    qualityApiAvailable = typeof video.getVideoPlaybackQuality === 'function';
+    mediaCapabilities.canPlayType = video.canPlayType(mime);
+    if (typeof video.requestVideoFrameCallback === 'function') video.requestVideoFrameCallback(onFrame);
+    if (navigator.mediaCapabilities) {
+      capabilityPromise = navigator.mediaCapabilities.decodingInfo({
+          type: 'file',
+          video: {
+            contentType: mime,
+            width: video.videoWidth,
+            height: video.videoHeight,
+            bitrate: 4000000,
+            framerate: 30,
+          },
+        })
+        .then((capability) => {
+        mediaCapabilities = {
+          canPlayType: mediaCapabilities.canPlayType,
+          mediaCapabilitiesState: 'available',
+          supported: capability.supported,
+          smooth: capability.smooth,
+          powerEfficient: capability.powerEfficient,
+          error: null,
+        };
+        })
+        .catch((capabilityError) => {
+          mediaCapabilities.mediaCapabilitiesState = 'error';
+          mediaCapabilities.error = String(capabilityError);
+        });
+    }
+    render();
+    try {
+      await video.play();
+    } catch (playError) {
+      await finish('play-error', playError);
+    }
+  });
+  video.addEventListener('timeupdate', () => {
+    if (mode === 'seek' && !seekRequested && video.currentTime >= Math.min(2, seekTarget / 2)) {
+      seekRequested = true;
+      video.currentTime = seekTarget;
+    }
+    render();
+  });
+  video.addEventListener('seeked', () => { seekCompleted = true; render(); });
+  video.addEventListener('ended', () => { void finish('ended'); });
+  video.addEventListener('error', () => {
+    void finish('media-error', video.error?.message || video.error?.code);
+  });
+  setTimeout(() => {
+    if (state === 'loading' || state === 'playing') void finish('timeout');
+  }, timeoutMs);
+
+  if (!/^[a-f0-9]{32}$/.test(token) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(scenarioId) ||
+      !['full', 'seek'].includes(mode)) {
+    void finish('harness-error', 'invalid run identity');
+  } else {
+    video.src = '/media';
+  }
+</script>

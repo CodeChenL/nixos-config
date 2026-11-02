@@ -1,4 +1,4 @@
 interface:
   display_name: "Firefox Video QA"
-  short_description: "Verify real Firefox hardware video decoding"
-  default_prompt: "Use $firefox-video-qa to verify whether this Firefox build sustains hardware video decoding for the requested media matrix."
+  short_description: "Run manifest-bound Firefox Linux video decode QA"
+  default_prompt: "Use $firefox-video-qa to validate the canonical media manifest before SSH, run the Linux matrix serially with isolated Firefox profiles, and report the machine-readable multi-axis verdict without weakening missing evidence."

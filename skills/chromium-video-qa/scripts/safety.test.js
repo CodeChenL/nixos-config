@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const {test, after} = require('node:test');
+const {test} = require('node:test');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -12,12 +12,9 @@ const {readIdentity, ownedEndpoint, closeOwned} = require('./browser-ownership')
 const {fakeCdp} = require('./fake-cdp');
 
 const token = 'a'.repeat(32);
-const mockBin = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-observer-mock-'));
-fs.writeFileSync(path.join(mockBin, 'sudo'), `#!/bin/sh\nexec '${process.execPath}' '${__dirname}/mock-observer.js' "$@"\n`, {mode: 0o700});
-after(() => fs.rmSync(mockBin, {recursive: true, force: true}));
 const guard = (action, root, owner = token) => spawnSync('bash', [
   path.join(__dirname, 'remote-guard.sh'), action, owner, root || '',
-], {encoding: 'utf8', timeout: 3000, env: {...process.env, PATH: mockBin + ':' + process.env.PATH}});
+], {encoding: 'utf8', timeout: 3000});
 const profile = '/tmp/chromium-video-qa.ABCDEF123456/profile';
 const url = 'file://' + profile.slice(0, -7) + 'video-qa.html?run=' + token;
 const identity = readIdentity({QA_EXPECTED_URL: url, QA_PROFILE: profile,
@@ -53,16 +50,44 @@ test('symlinked owner marker cannot authorize removal', () => {
   } finally { guard('remove', root); }
 });
 
-test('opaque privileged observer refuses deletion despite an empty unprivileged view', () => {
+test('symlinked profile cannot authorize removal', () => {
+  const root = guard('create').stdout.trim();
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-profile-'));
+  try {
+    fs.rmdirSync(root + '/profile');
+    fs.writeFileSync(path.join(external, 'sentinel'), 'keep');
+    fs.symlinkSync(external, root + '/profile');
+    assert.equal(guard('remove', root).status, 2);
+    assert.equal(fs.readFileSync(path.join(external, 'sentinel'), 'utf8'), 'keep');
+  } finally {
+    fs.rmSync(root + '/profile', {force: true});
+    fs.mkdirSync(root + '/profile');
+    guard('remove', root);
+    fs.rmSync(external, {recursive: true, force: true});
+  }
+});
+
+test('reused recorded browser PID refuses deletion and retains directory', () => {
   const root = guard('create').stdout.trim();
   try {
-    const result = spawnSync('bash', [path.join(__dirname, 'remote-guard.sh'), 'remove', token, root], {
-      encoding: 'utf8', timeout: 3000,
-      env: {...process.env, PATH: mockBin + ':' + process.env.PATH, QA_MOCK_OBSERVER: 'hidden-process'},
-    });
-    assert.equal(result.status, 3);
+    const boot = fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+    const fields = fs.readFileSync(`/proc/${process.pid}/stat`, 'utf8').split(')').at(-1).trim().split(/\s+/);
+    fs.writeFileSync(root + '/.browser-identity',
+        `ROOTLESS_RUN_V1\t${boot}\t${process.pid}\t${Number(fields[19]) + 1}\t${fields[3]}\t${token}\t${root}/profile\n`);
+    assert.equal(guard('remove', root).status, 3);
     assert.equal(fs.existsSync(root), true);
-  } finally { guard('remove', root); }
+  } finally {
+    fs.rmSync(root + '/.browser-identity', {force: true});
+    guard('remove', root);
+  }
+});
+
+test('production scripts contain no privileged helper or process-kill fallback', () => {
+  const production = fs.readdirSync(__dirname).filter((name) =>
+    /\.(?:js|sh)$/.test(name) && !name.endsWith('.test.js') && !name.startsWith('mock-'))
+      .map((name) => fs.readFileSync(path.join(__dirname, name), 'utf8')).join('\n');
+  assert.doesNotMatch(production,
+      /\bsudo\b|\/usr\/local\/libexec\/chromium-qa-observer|\bpkill\b|fuser\s+-k/);
 });
 
 test('unsafe overrides abort before SSH and preserve preexisting directories', () => {
@@ -113,6 +138,41 @@ test('live exact-profile process prevents removal without killing process', asyn
   }
 });
 
+test('profile prefix lookalike does not block exact-path cleanup', async () => {
+  const root = guard('create').stdout.trim();
+  const child = spawn(process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)', '--', '--user-data-dir=' + root + '/profile-other']);
+  await once(child, 'spawn');
+  try {
+    assert.equal(guard('remove', root).status, 0);
+    assert.equal(child.exitCode, null);
+  } finally {
+    const closed = once(child, 'close');
+    child.kill();
+    await closed;
+  }
+});
+
+test('recorded run identity validates live process and cleanup detects its exit', {timeout: 10000}, async () => {
+  const root = guard('create').stdout.trim();
+  assert.equal(guard('arm', root).status, 0);
+  const child = spawn('setsid', [process.execPath, '-e', 'setInterval(() => {}, 1000)', '--',
+    '--user-data-dir=' + root + '/profile']);
+  await once(child, 'spawn');
+  try {
+    const record = spawnSync('bash', [path.join(__dirname, 'remote-guard.sh'), 'record', token, root,
+      String(child.pid)], {encoding: 'utf8', timeout: 8000});
+    assert.equal(record.status, 0, record.stderr);
+    assert.equal(guard('validate', root).status, 0);
+    assert.equal(guard('remove', root).status, 3);
+  } finally {
+    const closed = once(child, 'close');
+    child.kill();
+    await closed;
+    assert.equal(guard('remove', root).status, 0);
+  }
+});
+
 test('uncertain launch state cannot authorize deletion', () => {
   const root = guard('create').stdout.trim();
   try {
@@ -144,6 +204,7 @@ test('session member without profile argument prevents removal', {timeout: 5000}
     const closed = once(child, 'close');
     child.kill();
     await closed;
+    fs.rmSync(root + '/.session', {force: true});
     assert.equal(guard('remove', root).status, 0);
   }
 });

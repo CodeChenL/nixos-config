@@ -9,61 +9,66 @@ description: >
 
 # Firefox 视频解码 QA
 
-目标是证明指定 Firefox 二进制在指定运行环境中完成了真实视频解码，而不是仅证明
-`about:support`、MediaCapabilities、驱动枚举或 decoder 初始化成功。
+此 skill 为 Linux 提供可执行、target-agnostic 的 Firefox 视频解码 QA harness。它验证真实
+Firefox binary 的播放路径，不使用 Playwright Firefox、geckodriver 或用户 profile。
+其他桌面/移动平台按 [evidence-and-reporting.md](references/evidence-and-reporting.md) 的
+手动证据小节采集等价证据。开始前必须读取 [qa-procedure.md](references/qa-procedure.md)、
+[evidence-and-reporting.md](references/evidence-and-reporting.md) 和
+[harness-contract.md](references/harness-contract.md)。
 
-执行 QA 时必须读取 [references/qa-procedure.md](references/qa-procedure.md)。确定目标
-平台后，再读取
-[references/evidence-and-reporting.md](references/evidence-and-reporting.md)，仅执行对应平台
-小节。
+## 标准执行
 
-## 证据门
+1. 用 `scripts/generate-fixtures.sh <fixture-dir>` 生成标准 6 场景矩阵，或按 harness
+   contract 提供已有 fixture 的 canonical `manifest.json`。
+   需要压力分辨率矩阵时显式运行
+   `RESOLUTION_MATRIX=1 scripts/generate-fixtures.sh <fixture-dir>`。该命令保留标准
+   `manifest.json`，并额外生成 `manifest-resolution.json`：H.264 High、HEVC Main、
+   HEVC Main10、VP9 Profile 0/2 分别覆盖 1080p30、1080p60、4k30 和 4k60，共 20 个
+   full/evidence 场景。
+2. 在任何 SSH 前运行 `scripts/validate-manifest.sh <manifest.json>`。它重新计算 SHA-256，
+   并逐项核对 ffprobe 的 container、codec/profile、pixel format、位深/chroma、尺寸、
+   fps、duration 和 frame count。
+3. 运行 `scripts/probe-target.sh <user@host> <absolute-firefox-path>`，保存结构化 probe，
+   人工确认“Firefox/container 能力、目标 runtime decoder、fixture”三者交集。
+4. 串行运行：
 
-按以下层次分别给结论，不得互相替代：
+```sh
+scripts/run-matrix.sh MANIFEST USER@HOST /absolute/path/to/firefox OUTPUT_DIR \
+  XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 MOZ_ENABLE_WAYLAND=1
+```
 
-1. Firefox 能解析容器和 codec；
-2. 浏览器和操作系统上报可用 decoder；
-3. 目标 decoder 初始化成功；
-4. 整个场景持续使用硬件 backend，没有重建为软件 decoder；
-5. 页面实际呈现到目标时间或 EOS，帧数和错误指标合理；
-6. 场景结束后测试进程、设备句柄、端口、profile 和临时文件被正确清理。
+每个场景都创建新的 Firefox parent、`setsid` session 和 0700 profile。SSH 始终使用
+`-n`，manifest 通过独立文件传输，参数以 argv 安全引用；矩阵绝不并行。
 
-只有第 4、5、6 项同时成立，才可报告“硬件解码 QA 通过”。单帧硬件输出、短暂设备
-占用、`IsHardwareAccelerated=true` 或 `Hardware Supported` 均不够。
+## 判定契约
 
-## 执行原则
+`verdict.json` 固定给出 `hardware_path`、`rendering`、`quality`、`cleanup`、
+`performance` 和 `overall`。硬件路径 PASS 必须同时具备 playback `ChannelDecoder`
+tracking ID、RDD decoder instance、目标 hardware codec、`IsHardwareAccelerated=true`、
+直到 terminal/seek PTS 的 VA-API frame、RDD `/dev/videoN` owner、实际映射的
+FFmpeg/libva/V4L2 driver、DMA-BUF import，以及无 playback fallback。
 
-- 测试用户指定或当前实际使用的 Firefox 二进制，记录版本、Build ID、来源和实际加载
-  的媒体库。不要用 Playwright 自带的定制 Firefox 代替被测系统 Firefox。
-- 每个 codec/profile/位深场景使用新的 Firefox 父进程和隔离 profile，避免静态能力缓存、
-  decoder 状态、service worker 或前一场景的崩溃恢复污染后续结果。
-- 测试矩阵取“Firefox 可解析能力、平台运行时 decoder 能力、可验证样片”三者交集。
-  不支持或缺样片的项目明确标为 `UNSUPPORTED` 或 `BLOCKED`，不得伪造 PASS。
-- 为每个场景绑定样片哈希与解析结果；至少记录 codec、profile、位深、chroma、分辨率、
-  帧率、时长和期望帧数。
-- 同时采集页面、Firefox decoder 日志和平台硬件证据，并按 PID、decoder 实例和时间线
-  关联。多进程日志可能交错，保留原始日志，不仅依赖 grep 计数。
-- `ProcessFlush()` 可能来自 seek、EOS 或失败；只有结合 decoder error、
-  `HardwareDecoderNotAllowed`、软件 decoder 重建或硬件设备提前释放，才能判为 fallback。
-- 正确性通过后才测吞吐、CPU/GPU 占用、功耗或 dropped frames；性能指标不能证明解码
-  backend 身份。
+`corruptedVideoFrames > 0` 是 quality FAIL；`null`、undefined 或 API unavailable 是
+INCONCLUSIVE。dropped frames 没有预声明 threshold 时 performance 不得 PASS。
+evidence profile 的性能数据标为 `instrumented=true`，只作观察；performance profile
+只有阈值已写入 manifest 且未超出时才能 PASS。任一 required axis 不 PASS 时 overall
+不得 PASS。Firefox 155 的 `corruptedVideoFrames=null` 因此应得到 quality 和 overall
+INCONCLUSIVE，而不是伪造 PASS。
 
 ## 安全边界
 
-- 默认不修改用户 profile、系统 Firefox、系统媒体库、浏览器策略、驱动或内核，不安装
-  包，不重启、不登出、不刷写、不执行电源操作。需要这些动作时先取得当前请求的明确
-  授权。
-- 只终止本次 QA 创建、且能通过命令行和 profile 路径复核的精确父 PID；禁止使用
-  `pkill firefox`、模糊进程匹配或终止已有浏览器/HIL。
-- 测试前、中、后记录共享解码设备或 GPU 的其他使用者。若用户允许并行 HIL，可保留
-  并发但必须标记污染窗口，并用全新 profile 重跑可疑失败；不得杀掉外部占用者。
-- 凭据、cookie、用户 URL、私有媒体和 profile 内容不得进入报告。远端测试使用调用方
-  已授权的连接方式，不把密码写入脚本或产物。
-- 若媒体测试触发内核错误、设备失联或系统卡死，停止新增负载并按用户已有恢复流程
-  处理；本 skill 不授予重启或断电权限。
+- 不安装或部署包，不修改系统 Firefox、媒体库、驱动、policy 或用户 profile。
+- 每次 TERM、KILL 和目录删除前重新验证 boot ID、PID start time、精确 profile、随机
+  token、SID、PGID，以及实际 `/proc/<pid>/exe` 与 ELF Build ID。验证失败或 `/proc`
+  不透明时保留目录并报告 cleanup 非 PASS。
+- 启动 Firefox 前做 rootless before snapshot；可见外部 `/dev/videoN` owner 或同 UID
+  opaque process 时写 `outcome.json` 并以 `BLOCKED` 退出（exit 3），不启动、不 kill。
+- 禁止 `pkill`、模糊匹配和外部 process kill。rootless observer 只读取可见的 process、
+  fd 和 maps，不要求 sudo，也不把不可见状态升级为 PASS。
+- 只回收 evidence allowlist；profile、cookies、Glean、sessionstore 和浏览历史永不复制。
+- 凭据只能来自调用方 SSH 配置/agent，不接受密码参数，也不写入 artifacts。
 
-## 交付
-
-报告必须给出场景矩阵和原始证据位置，并分别陈述：运行时身份、能力上报、decoder
-初始化、持续硬件解码、渲染结果、性能结果、重试/并发条件和清理状态。无法确认硬件
-backend 时报告 `INCONCLUSIVE`，不要把软件播放成功写成硬解通过。
+本地确定性回归：`uv run --project . pytest -q` 运行 Python tests，
+`node --test tests/telemetry.test.js` 运行页面 telemetry tests。静态门为
+`basedpyright firefox_qa`、`ruff check firefox_qa` 和 `ruff format --check firefox_qa`。
+这些测试不连接目标；真实硬件结论只能来自当前 binary/fixture 的 HIL artifacts。

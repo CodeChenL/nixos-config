@@ -1,8 +1,8 @@
 'use strict';
 
 const fs = require('node:fs');
-const { chromium } = require('playwright');
-const {readIdentity, ownedEndpoint, ownedPage, closeOwned} = require('./browser-ownership');
+const { chromium } = require('./playwright-loader');
+const {readIdentity, ownedEndpoint, ownedPage} = require('./browser-ownership');
 
 const [prefix, expectedMode] = process.argv.slice(2);
 if (!prefix || !['full', 'seek'].includes(expectedMode)) {
@@ -21,11 +21,9 @@ const screenshots = process.env.QA_SCREENSHOTS !== '0';
   const endpoint = await ownedEndpoint(cdpUrl, identity);
   const browser = await chromium.connectOverCDP(endpoint, {timeout: 10000});
   let browserSession;
-  let owned = false;
   try {
     browserSession = await browser.newBrowserCDPSession();
     const page = await ownedPage(browser, browserSession, identity);
-    owned = true;
 
     page.on('console', (message) => {
       console.error('[browser ' + message.type() + '] ' + message.text());
@@ -62,6 +60,7 @@ const screenshots = process.env.QA_SCREENSHOTS !== '0';
         (states) => states.includes(window.qa && window.qa.state),
         terminalStates, {timeout: timeoutMs});
     const qa = await page.evaluate(() => structuredClone(window.qa));
+    fs.writeFileSync(prefix + '-qa.json', JSON.stringify(qa, null, 2) + '\n');
     if (screenshots)
       await page.screenshot({path: prefix + '-ended.png', fullPage: true});
 
@@ -95,10 +94,7 @@ const screenshots = process.env.QA_SCREENSHOTS !== '0';
     }, null, 2) + '\n');
   } finally {
     try {
-      if (owned)
-        await closeOwned(browser, browserSession, identity);
-      else
-        await browser.close();
+      await browser.close();
     } catch (error) {
       console.error('cleanup: ' + (error.stack || error));
       process.exitCode = 1;

@@ -5,3 +5,7 @@ hosts/ChenRadxaOrionO6N/openwrt/etc/
 .omo/
 result
 .debug-journal.md
+# Python / Node 运行产物
+__pycache__/
+*.pyc
+.venv/

@@ -15,6 +15,7 @@ height="${HEIGHT:-720}"
 fps="${FPS:-30}"
 duration="${DURATION:-6}"
 force="${FORCE:-0}"
+resolution_matrix="${RESOLUTION_MATRIX:-0}"
 mkdir -p "$out"
 
 encode() {
@@ -138,6 +139,98 @@ while IFS=$'\t' read -r id _mode media _; do
     -show_entries stream=codec_name,profile,pix_fmt,width,height,r_frame_rate \
     -of compact=p=0 "$media" >>"$out/ffprobe.txt"
 done <"$manifest"
+
+generate_resolution_matrix() {
+  local -a tags=(1080p30 1080p60 4k30 4k60)
+  local -a widths=(1920 1920 3840 3840)
+  local -a heights=(1080 1080 2160 2160)
+  local -a frame_rates=(30 60 30 60)
+  local -a h264_levels=(4.0 4.2 5.1 5.2)
+  local -a h264_level_ids=(40 42 51 52)
+  local -a h264_codecs=(avc1.640028 avc1.64002A avc1.640033 avc1.640034)
+  local -a vp9_levels=(40 41 50 51)
+  local matrix_manifest="$out/manifest-resolution.tsv"
+  local matrix_probe="$out/ffprobe-resolution.txt"
+  local index tag matrix_width matrix_height matrix_fps matrix_filter matrix_gop
+
+  for index in "${!tags[@]}"; do
+    tag="${tags[$index]}"
+    matrix_width="${widths[$index]}"
+    matrix_height="${heights[$index]}"
+    matrix_fps="${frame_rates[$index]}"
+    matrix_filter="testsrc2=size=${matrix_width}x${matrix_height}:rate=${matrix_fps}:duration=${duration}"
+    matrix_gop="$matrix_fps"
+
+    encode "$out/h264-high-$tag.mp4" \
+      -f lavfi -i "$matrix_filter" -an \
+      -c:v libx264 -preset veryfast -profile:v high \
+      -level:v "${h264_levels[$index]}" -pix_fmt yuv420p -g "$matrix_gop" \
+      -x264-params "keyint=$matrix_gop:min-keyint=$matrix_gop:scenecut=0" \
+      -movflags +faststart
+    encode "$out/vp9-profile0-$tag.webm" \
+      -f lavfi -i "$matrix_filter" -an \
+      -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 \
+      -profile:v 0 -pix_fmt yuv420p -g "$matrix_gop" -b:v 0 -crf 32
+    encode "$out/vp9-profile2-$tag.webm" \
+      -f lavfi -i "$matrix_filter" -an \
+      -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 \
+      -profile:v 2 -pix_fmt yuv420p10le -g "$matrix_gop" -b:v 0 -crf 32
+
+    require_field "$out/h264-high-$tag.mp4" codec_name h264
+    require_field "$out/h264-high-$tag.mp4" profile High
+    require_field "$out/h264-high-$tag.mp4" pix_fmt yuv420p
+    require_field "$out/h264-high-$tag.mp4" width "$matrix_width"
+    require_field "$out/h264-high-$tag.mp4" height "$matrix_height"
+    require_field "$out/h264-high-$tag.mp4" r_frame_rate "$matrix_fps/1"
+    require_field "$out/h264-high-$tag.mp4" level "${h264_level_ids[$index]}"
+
+    require_field "$out/vp9-profile0-$tag.webm" codec_name vp9
+    require_field "$out/vp9-profile0-$tag.webm" profile 'Profile 0'
+    require_field "$out/vp9-profile0-$tag.webm" pix_fmt yuv420p
+    require_field "$out/vp9-profile0-$tag.webm" width "$matrix_width"
+    require_field "$out/vp9-profile0-$tag.webm" height "$matrix_height"
+    require_field "$out/vp9-profile0-$tag.webm" r_frame_rate "$matrix_fps/1"
+
+    require_field "$out/vp9-profile2-$tag.webm" codec_name vp9
+    require_field "$out/vp9-profile2-$tag.webm" profile 'Profile 2'
+    require_field "$out/vp9-profile2-$tag.webm" pix_fmt yuv420p10le
+    require_field "$out/vp9-profile2-$tag.webm" width "$matrix_width"
+    require_field "$out/vp9-profile2-$tag.webm" height "$matrix_height"
+    require_field "$out/vp9-profile2-$tag.webm" r_frame_rate "$matrix_fps/1"
+  done
+
+  {
+    printf '# id\tmode\tlocal_media\tmime\tcodec\tprofile\tbit_depth\tpixel\thold\n'
+    for index in "${!tags[@]}"; do
+      tag="${tags[$index]}"
+      printf 'h264-high-%s\tfull\t%s\tvideo/mp4;codecs=%s\tH264\thigh\t8\tPIXEL_FORMAT_NV12\t1\n' \
+        "$tag" "$(realpath "$out/h264-high-$tag.mp4")" "${h264_codecs[$index]}"
+    done
+    for index in "${!tags[@]}"; do
+      tag="${tags[$index]}"
+      printf 'vp9-profile0-%s\tfull\t%s\tvideo/webm;codecs=vp09.00.%s.08\tVP9\tprofile0\t8\tPIXEL_FORMAT_NV12\t1\n' \
+        "$tag" "$(realpath "$out/vp9-profile0-$tag.webm")" "${vp9_levels[$index]}"
+    done
+    for index in "${!tags[@]}"; do
+      tag="${tags[$index]}"
+      printf 'vp9-profile2-%s\tfull\t%s\tvideo/webm;codecs=vp09.02.%s.10\tVP9\tprofile2\t10\tPIXEL_FORMAT_P010LE\t1\n' \
+        "$tag" "$(realpath "$out/vp9-profile2-$tag.webm")" "${vp9_levels[$index]}"
+    done
+  } >"$matrix_manifest"
+
+  : >"$matrix_probe"
+  while IFS=$'\t' read -r id _mode media _; do
+    [[ "$id" == \#* ]] && continue
+    printf '%s\t' "$id" >>"$matrix_probe"
+    ffprobe -v error -select_streams v:0 \
+      -show_entries stream=codec_name,profile,pix_fmt,width,height,r_frame_rate,level \
+      -of compact=p=0 "$media" >>"$matrix_probe"
+  done <"$matrix_manifest"
+}
+
+if [[ "$resolution_matrix" == 1 ]]; then
+  generate_resolution_matrix
+fi
 
 sha256sum "$out"/*.mp4 "$out"/*.webm >"$out/SHA256SUMS"
 printf '%s\n' "$manifest"

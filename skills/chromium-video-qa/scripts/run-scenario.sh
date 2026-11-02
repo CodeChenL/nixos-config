@@ -73,6 +73,7 @@ skill_dir="$(cd "$script_dir/.." && pwd)"
 target="${TARGET_USER}@${TARGET_HOST}"
 remote_root=
 created=0
+retain_remote=0
 run_token="$("$NODE_BIN" -e 'process.stdout.write(require("node:crypto").randomBytes(16).toString("hex"))')"
 
 mkdir -p "$OUTPUT_DIR"
@@ -110,8 +111,7 @@ if [[ -z "$XDG_RUNTIME_DIR_REMOTE" ]]; then
   XDG_RUNTIME_DIR_REMOTE="/run/user/$(remote 'id -u')"
 fi
 remote "test -x $(printf '%q' "$CHROMIUM_BIN") && test \"\$(id -u)\" -ne 0 &&
-  command -v sudo >/dev/null && command -v timeout >/dev/null &&
-  command -v setsid >/dev/null"
+  command -v timeout >/dev/null && command -v setsid >/dev/null"
 
 quote() {
   printf '%q' "$1"
@@ -126,12 +126,12 @@ device_snapshot() {
   guard snapshot "$VIDEO_DEVICE_REMOTE" >"$1" 2>"$1.stderr"
 }
 
-device_idle() {
+device_visible_idle() {
   local status=0
   device_snapshot "$1" || status=$?
   printf '%s\n' "$status" >"$1.status"
   [[ "$status" == 0 && ! -s "$1.stderr" ]] &&
-    "$NODE_BIN" "$script_dir/check-observation.js" idle "$1" "$run_session"
+    "$NODE_BIN" "$script_dir/check-observation.js" visible-idle "$1" "$run_session"
 }
 
 wait_runtime_idle() {
@@ -161,6 +161,7 @@ stop_monitor() {
   kill -TERM "$monitor_pid" 2>/dev/null || true
   wait "$monitor_pid" 2>/dev/null || monitor_rc=$?
 }
+# shellcheck disable=SC2329
 cleanup() {
   if [[ -n "$monitor_pid" ]]; then
     stop_monitor
@@ -168,10 +169,10 @@ cleanup() {
   if [[ -n "$tunnel_pid" ]]; then
     stop_group "$tunnel_pid"
   fi
-  if [[ "$created" == 1 && "$KEEP_REMOTE" != 1 ]]; then
+  if [[ "$created" == 1 && "$KEEP_REMOTE" != 1 && "$retain_remote" != 1 ]]; then
     if ! guard remove; then
       echo "cleanup refused; retained owned run directory: $remote_root" >&2
-      printf '%s\tFAIL\t%s\t%s\t%s\t%s\n' \
+      printf '%s\tPLAYBACK_UNKNOWN\tHW_PATH_UNKNOWN\tOWNED_CLEANUP_FAIL\tGLOBAL_IDLE_UNKNOWN\tOVERALL_FAIL\t%s\t%s\t%s\t%s\n' \
         "$id" "$expected_codec" "$profile" "$bit_depth" "$expected_pixel" \
         >"$prefix-result.tsv"
     fi
@@ -180,14 +181,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-observer_status=0
-remote "sudo -n -- /usr/local/libexec/chromium-qa-observer snapshot \
-  \"\$(readlink /proc/\$\$/ns/pid)\" $VIDEO_DEVICE_REMOTE 0 -" \
-  >"$prefix-preexisting-video.txt" 2>"$prefix-preexisting-video.txt.stderr" || observer_status=$?
-printf '%s\n' "$observer_status" >"$prefix-preexisting-video.txt.status"
-if [[ "$observer_status" != 0 || -s "$prefix-preexisting-video.txt.stderr" ]] ||
+observation_status=0
+guard preflight "$VIDEO_DEVICE_REMOTE" \
+  >"$prefix-preexisting-video.txt" 2>"$prefix-preexisting-video.txt.stderr" || observation_status=$?
+printf '%s\n' "$observation_status" >"$prefix-preexisting-video.txt.status"
+if [[ "$observation_status" != 0 || -s "$prefix-preexisting-video.txt.stderr" ]] ||
     ! "$NODE_BIN" "$script_dir/check-observation.js" preflight "$prefix-preexisting-video.txt" 0; then
-  echo "privileged observer unavailable, opaque, or target busy; refusing $id" >&2
+  echo "visible Chromium/device conflict or unreadable device node; refusing $id" >&2
+  printf '%s\tPLAYBACK_BLOCKED\tHW_PATH_BLOCKED\tOWNED_CLEANUP_NOT_RUN\tGLOBAL_IDLE_UNKNOWN\tOVERALL_BLOCKED\t%s\t%s\t%s\t%s\n' \
+    "$id" "$expected_codec" "$profile" "$bit_depth" "$expected_pixel" >"$prefix-result.tsv"
   exit 3
 fi
 runtime_before="$(wait_runtime_idle)"
@@ -195,6 +197,8 @@ if [[ -n "$runtime_before" ]]; then
   printf '%s\n' "$runtime_before" >"$prefix-prelaunch-runtime.txt"
   if [[ "$runtime_before" != suspended ]]; then
     echo "video runtime did not become suspended before $id" >&2
+    printf '%s\tPLAYBACK_BLOCKED\tHW_PATH_BLOCKED\tOWNED_CLEANUP_NOT_RUN\tGLOBAL_IDLE_UNKNOWN\tOVERALL_BLOCKED\t%s\t%s\t%s\t%s\n' \
+      "$id" "$expected_codec" "$profile" "$bit_depth" "$expected_pixel" >"$prefix-result.tsv"
     exit 3
   fi
 fi
@@ -245,12 +249,13 @@ for flag in "${flags[@]}"; do
   launch+=" $(quote "$flag")"
 done
 launch+=" $(quote "$url")"
-launch="printf '%s\\n' \"\$\$\" >$(quote "$remote_root/.session"); $launch"
 launch="nohup setsid bash -c $(quote "$launch")"
 launch+=" >$(quote "$remote_log") 2>&1 < /dev/null & echo \$!"
 
 guard arm
 remote "$launch" >"$prefix-launch-pid.txt"
+launch_pid="$(<"$prefix-launch-pid.txt")"
+guard record "$launch_pid"
 
 ready=0
 for ((i = 0; i < CDP_WAIT_SECONDS * 5; ++i)); do
@@ -273,7 +278,7 @@ setsid "${ssh_cmd[@]}" -N -S "$tunnel_socket" -M \
   >"$prefix-tunnel.log" 2>&1 &
 tunnel_pid=$!
 
-setsid bash "$script_dir/monitor-observer.sh" "$SCENARIO_TIMEOUT_SECONDS" \
+setsid bash "$script_dir/monitor-rootless.sh" "$SCENARIO_TIMEOUT_SECONDS" \
   "$target" "$run_token" "$remote_root" "$VIDEO_DEVICE_REMOTE" "${ssh_cmd[@]}" \
   >"$prefix-monitor.log" 2>"$prefix-monitor.stderr" &
 monitor_pid=$!
@@ -309,58 +314,108 @@ set -e
 stop_monitor
 printf '%s\n' "$monitor_rc" >"$prefix-monitor.status"
 monitor_pid=
+"${scp_cmd[@]}" "$target:$remote_log" "$prefix-chromium.log"
+close_rc=0
+if ! guard validate; then
+  close_rc=1
+  echo "browser identity changed before Browser.close; browser retained" >&2
+else
+  set +e
+  CDP_URL="http://127.0.0.1:$CDP_LOCAL_PORT" \
+  QA_EXPECTED_URL="$url" QA_RUN_TOKEN="$run_token" \
+  QA_PROFILE="$remote_root/profile" QA_BROWSER_PATH="${active_port[1]}" \
+  NODE_PATH="${NODE_PATH:-}" timeout --foreground "$SCENARIO_TIMEOUT_SECONDS" \
+    "$NODE_BIN" "$script_dir/close-owned-browser.js" \
+    >"$prefix-close.json" 2>"$prefix-close.stderr"
+  close_rc=$?
+  set -e
+fi
 stop_group "$tunnel_pid"
 tunnel_pid=
-
-"${scp_cmd[@]}" "$target:$remote_log" "$prefix-chromium.log"
 sleep 1
-guard processes >"$prefix-postclose-process.txt"
-device_released=0
-if device_idle "$prefix-postclose-video.txt"; then
-  device_released=1
+process_status=0
+guard processes >"$prefix-postclose-process.txt" || process_status=$?
+visible_device_released=0
+if device_visible_idle "$prefix-postclose-video.txt"; then
+  visible_device_released=1
 fi
 wait_runtime_idle >"$prefix-postclose-runtime.txt"
 
-result=INCONCLUSIVE
+playback=PLAYBACK_PASS
+hardware=HW_PATH_NOT_OBSERVED
+cleanup_status=OWNED_CLEANUP_PASS
+overall=OVERALL_INCONCLUSIVE_ROOTLESS
+unsupported=0
 echo "No build-validated playback-correlated CAPTURE/output evidence collector; hardware result INCONCLUSIVE" \
   >"$prefix-hardware-evidence.txt"
-if [[ "$driver_rc" -ne 0 ]]; then
-  result=FAIL
+if [[ "$driver_rc" -ne 0 ]] && [[ -f "$prefix-qa.json" ]] &&
+    "$NODE_BIN" -e 'const q=require(process.argv[1]);process.exit(q&&q.state==="media-error"&&String(q.error)==="4"?0:1)' "$prefix-qa.json" 2>/dev/null; then
+  unsupported=1
+  playback=PLAYBACK_UNSUPPORTED
+  overall=OVERALL_UNSUPPORTED
 fi
-if ! grep -Fq 'v4l2_stateful_video_decoder.cc' "$prefix-chromium.log"; then
-  echo "V4L2 stateful decoder was not observed" >&2
-  result=FAIL
+if [[ "$driver_rc" -ne 0 && "$unsupported" == 0 ]]; then
+  playback=PLAYBACK_FAIL
+  overall=OVERALL_FAIL
 fi
-if [[ "$expected_pixel" != - ]] &&
-    ! grep -Fq "format:$expected_pixel" "$prefix-chromium.log"; then
-  echo "expected pixel format not found in log: $expected_pixel" >&2
-  result=FAIL
+if [[ "$unsupported" == 0 ]]; then
+  if [[ "$monitor_rc" != 0 || -s "$prefix-monitor.stderr" ]] ||
+      ! "$NODE_BIN" "$script_dir/check-observation.js" complete "$prefix-monitor.log" "$run_session"; then
+    echo "rootless monitor observation incomplete or opaque" >&2
+    hardware=HW_PATH_UNKNOWN
+    cleanup_status=OWNED_CLEANUP_FAIL
+    overall=OVERALL_FAIL
+    retain_remote=1
+  elif "$NODE_BIN" "$script_dir/check-observation.js" hold "$prefix-monitor.log" "$run_session"; then
+    hardware=HW_PATH_OBSERVED
+  elif [[ "$require_device_hold" == 1 ]]; then
+    echo "same-sample run-owned GPU fd ownership not observed" >&2
+  fi
+  if grep -Eq 'software fallback|pixel format mismatch|Unsupported output format' "$prefix-chromium.log"; then
+    hardware=HW_PATH_FAIL
+    overall=OVERALL_FAIL
+  fi
 fi
-if [[ "$monitor_rc" != 0 || -s "$prefix-monitor.stderr" ]] ||
-    ! "$NODE_BIN" "$script_dir/check-observation.js" complete "$prefix-monitor.log" "$run_session"; then
-  echo "monitor observation incomplete" >&2
-  result=FAIL
-fi
-if [[ "$require_device_hold" == 1 ]] &&
-    ! "$NODE_BIN" "$script_dir/check-observation.js" hold "$prefix-monitor.log" "$run_session"; then
-  echo "same-sample session GPU device ownership not observed" >&2
-  result=FAIL
-fi
-if [[ -s "$prefix-postclose-process.txt" ]]; then
+if [[ "$close_rc" != 0 || "$process_status" != 0 || -s "$prefix-postclose-process.txt" ]]; then
   echo "QA Chromium remained after Browser.close" >&2
-  result=FAIL
+  cleanup_status=OWNED_CLEANUP_FAIL
+  overall=OVERALL_FAIL
+  retain_remote=1
 fi
-if [[ "$device_released" != 1 ]]; then
-  echo "device owners remain or postclose observer failed; baseline was empty" >&2
-  result=FAIL
+if [[ "$visible_device_released" != 1 ]]; then
+  echo "visible device owner remains or rootless postclose observation is opaque" >&2
+  cleanup_status=OWNED_CLEANUP_FAIL
+  overall=OVERALL_FAIL
+  retain_remote=1
 fi
 if [[ -s "$prefix-postclose-runtime.txt" ]] &&
     ! grep -qx suspended "$prefix-postclose-runtime.txt"; then
   echo "video runtime did not suspend after Browser.close" >&2
-  result=FAIL
+  cleanup_status=OWNED_CLEANUP_FAIL
+  overall=OVERALL_FAIL
 fi
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$id" "$result" "$expected_codec" "$profile" "$bit_depth" "$expected_pixel" \
+if [[ "$KEEP_REMOTE" == 1 ]]; then
+  cleanup_status=OWNED_CLEANUP_FAIL
+  overall=OVERALL_FAIL
+  retain_remote=1
+fi
+
+if [[ "$cleanup_status" == OWNED_CLEANUP_PASS ]]; then
+  if guard remove; then
+    created=0
+  else
+    echo "cleanup refused; retained owned run directory: $remote_root" >&2
+    cleanup_status=OWNED_CLEANUP_FAIL
+    overall=OVERALL_FAIL
+    retain_remote=1
+    created=0
+  fi
+fi
+
+printf '%s\t%s\t%s\t%s\tGLOBAL_IDLE_UNKNOWN\t%s\t%s\t%s\t%s\t%s\n' \
+  "$id" "$playback" "$hardware" "$cleanup_status" "$overall" \
+  "$expected_codec" "$profile" "$bit_depth" "$expected_pixel" \
   >"$prefix-result.tsv"
-[[ "$result" == PASS ]]
+[[ "$overall" == OVERALL_INCONCLUSIVE_ROOTLESS ]] && exit 1
+exit 1

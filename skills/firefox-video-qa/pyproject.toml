@@ -1,0 +1,66 @@
+[project]
+name = "firefox-video-qa-harness"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=9,<10",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider"]
+filterwarnings = ["error"]
+minversion = "9.0"
+pythonpath = ["."]
+testpaths = ["firefox_qa/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["firefox_qa"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "A002",
+  "C901",
+  "COM812",
+  "D",
+  "E501",
+  "EM101",
+  "EM102",
+  "FBT001",
+  "FBT003",
+  "FLY002",
+  "INP001",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  "PLR2004",
+  "S105",
+  "S108",
+  "S310",
+  "S603",
+  "T201",
+  "TC001",
+  "TC002",
+  "TC003",
+  "TRY003",
+  "TRY004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"firefox_qa/tests/*.py" = ["D", "PLR2004", "S101", "TID252"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.12"
+pythonPlatform = "All"
+include = ["firefox_qa"]
+exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
