@@ -7,7 +7,9 @@ let
     "api-key-service-tier"
     "codex-micro"
     "codex-wrapper-updater"
-    "directory-only-working-tree-watch"
+    # "directory-only-working-tree-watch"（watchbound）暂移除：上游
+    # watchbound-package.js 的 staging-root 清理在 Nix 沙盒内报 EACCES
+    # （同一脚本在沙盒外构建通过），上游修复后可加回。
     "frameless-titlebar"
     "global-dictation"
     "linux-performance-workarounds"
@@ -30,7 +32,10 @@ let
     linuxFeatureIds = codexDesktopLinuxFeatures;
     enableComputerUseUi = true;
     # 仅解锁上游已有的 Ultra catalog/slider gates。
-    enableApiKeyUltraUiPatch = true;
+    # 26.1027 bundle 重构了 ultra 机制（effort 枚举原生含 ultra、service tier 改
+    # ultrafast），原锚点整体失效；上游默认已倾向放开 includeUltraReasoningEffort。
+    # 待确认 V1 端实际可见性后再决定是否按新契约重写补丁。
+    enableApiKeyUltraUiPatch = false;
     dreamSkinThemePackage = oneLastKissDreamSkinPackage;
     dreamSkinAllowPlatformMismatch = true;
   };
@@ -271,7 +276,7 @@ in
   ] ++ pkgs.lib.optionals (pkgs.stdenv.hostPlatform.system == "x86_64-linux") [
     # llama.cpp with OpenVINO, CUDA, Vulkan, OpenCL, BLAS support;
     # heavy native build chain, desktop-only host packages.
-    llama-cpp-full
+    # llama-cpp-full
     # Bambu Studio and RustDesk are desktop-only host packages.
     bambu-studio
     rustdesk

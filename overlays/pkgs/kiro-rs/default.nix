@@ -47,12 +47,13 @@ let
     ];
 
     # fetcherVersion 2 与 pnpm 11 lockfile 兼容；nixpkgs 26.11 移除前迁移到 4 并重算 hash。
+    # 2026-11-02: flake 输入更新后 pnpm 工具链产出变化，按 nix 报告的 got 值重算。
     pnpmDeps = prev.fetchPnpmDeps {
       pname = "kiro-rs-admin-ui";
       inherit version;
       src = src + "/admin-ui";
       fetcherVersion = 2;
-      hash = "sha256-38iIk9nCxDgQrsjtqETHXR/zOLyAL/hw5b+E5D/Mt6U=";
+      hash = "sha256-LDN5bUWi3UXfGRVT3PJKTLbOWo0f/8aF7Qgry6jCSLE=";
     };
 
     buildPhase = ''

@@ -60,7 +60,7 @@
     };
 
     radxa-linkr-debugger = {
-      url = "github:xzl01/agent-debugboard/dev";
+      url = "github:xzl01/agent-debugboard/next";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

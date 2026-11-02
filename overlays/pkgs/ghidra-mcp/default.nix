@@ -1,10 +1,41 @@
 { final, ... }:
 
-assert final.unstable.ghidra.version == "12.1.2";
-assert final.unstable.python3Packages.mcp.version == "1.29.0";
+assert final.unstable.ghidra.version == "12.1.4";
 
 let
   version = "6.0.0";
+
+  # ghidra-mcp 6.0.0 声明 mcp>=1.28.1,<2.0.0；unstable 的 python3Packages.mcp
+  # 已升到 2.x，这里固定 1.29.0 专供 bridge（wheel 直装，依赖取 nixpkgs 现成包）。
+  mcp1 = final.unstable.python3Packages.buildPythonPackage rec {
+    pname = "mcp";
+    version = "1.29.0";
+    format = "wheel";
+    src = final.fetchurl {
+      url = "https://files.pythonhosted.org/packages/01/c8/248b201f6d753d69fd5d6506011abbb35a946d9142b2ae311a948fd0be3d/mcp-1.29.0-py3-none-any.whl";
+      hash = "sha256-9aB1u2EfI9b00IDGoWmfpidy7rxWK6nmazBt3eHHVfc=";
+    };
+    dependencies = with final.unstable.python3Packages; [
+      anyio
+      httpx
+      httpx-sse
+      jsonschema
+      pydantic
+      pydantic-settings
+      pyjwt
+      python-multipart
+      sse-starlette
+      starlette
+      typing-extensions
+      typing-inspection
+      uvicorn
+    ];
+    pythonImportsCheck = [ "mcp" ];
+    meta = {
+      description = "Model Context Protocol SDK (pinned 1.x for ghidra-mcp bridge)";
+      license = final.lib.licenses.mit;
+    };
+  };
 
   bridge = final.unstable.python3Packages.buildPythonApplication {
     pname = "ghidra-mcp-bridge";
@@ -16,7 +47,7 @@ let
       hash = "sha256-cZOaiQAJgmZkcgFm2PeG86LqJGD37/zYPHN1m6QkEzQ=";
     };
 
-    dependencies = [ final.unstable.python3Packages.mcp ];
+    dependencies = [ mcp1 ];
     pythonImportsCheck = [ "bridge_mcp_ghidra" ];
 
     meta = {

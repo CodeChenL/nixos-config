@@ -16,6 +16,11 @@ let
   };
 in
 llama-cpp-with-backends.overrideAttrs (oldAttrs: {
+    # OpenVINO 2025.x 移除了 ov::ProfilingInfo::start_time，上游 ggml-openvino
+    # 尚未适配（master 仍在用）。最小兼容补丁：profiling CSV 去掉该列，仅影响
+    # GGML_OPENVINO_PROFILING>=2 的调试输出；上游修复后可移除。
+    patches = (oldAttrs.patches or []) ++ [ ./openvino-profiling-compat.patch ];
+
     # Add OpenVINO support (not available as a standard option)
     cmakeFlags = (oldAttrs.cmakeFlags or []) ++ [
       "-DGGML_OPENVINO:BOOL=TRUE"

@@ -72,8 +72,6 @@ let
     "minimax/MiniMax-M2.7" = providerOverlay "minimax/MiniMax-M2.7" "minimax" "MiniMax-M2.7";
     "minimax/MiniMax-M2.7-highspeed" = providerOverlay "minimax/MiniMax-M2.7-highspeed" "minimax" "MiniMax-M2.7-highspeed";
     "minimax/MiniMax-M3" = providerOverlay "minimax/MiniMax-M3" "minimax" "MiniMax-M3";
-    "openai/gpt-image-1" = providerOverlay "openai/gpt-image-1" "openai" "gpt-image-1";
-    "openai/gpt-image-1.5" = providerOverlay "openai/gpt-image-1.5" "openai" "gpt-image-1.5";
     "openai/gpt-image-2" = providerOverlay "openai/gpt-image-2" "openai" "gpt-image-2";
     # MiMo speech models are provider-only entries in models.dev.  The ASR
     # alias is not present in the locked snapshot, so its boundary metadata is
@@ -85,9 +83,11 @@ let
       limit = { context = 8192; input = 8192; output = 8192; };
       modalities = { input = [ "audio" ]; output = [ "text" ]; };
     };
-    "xiaomi/mimo-v2.5-tts" = readModelsDev "providers/xiaomi-token-plan-cn/models/mimo-v2.5-tts.toml";
-    "xiaomi/mimo-v2.5-tts-voiceclone" = readModelsDev "providers/xiaomi-token-plan-cn/models/mimo-v2.5-tts-voiceclone.toml";
-    "xiaomi/mimo-v2.5-tts-voicedesign" = readModelsDev "providers/xiaomi-token-plan-cn/models/mimo-v2.5-tts-voicedesign.toml";
+    # MiMo speech models: provider overlays merged onto their canonical
+    # models/ base entries (schema 2 keeps limit/modalities in the base).
+    "xiaomi/mimo-v2.5-tts" = providerOverlay "xiaomi/mimo-v2.5-tts" "xiaomi-token-plan-cn" "mimo-v2.5-tts";
+    "xiaomi/mimo-v2.5-tts-voiceclone" = providerOverlay "xiaomi/mimo-v2.5-tts-voiceclone" "xiaomi-token-plan-cn" "mimo-v2.5-tts-voiceclone";
+    "xiaomi/mimo-v2.5-tts-voicedesign" = providerOverlay "xiaomi/mimo-v2.5-tts-voicedesign" "xiaomi-token-plan-cn" "mimo-v2.5-tts-voicedesign";
   };
   mkModel = spec:
     let
@@ -165,8 +165,6 @@ let
       { slug = "gpt-5.4-mini"; modelsDevId = "openai/gpt-5.4-mini"; displayName = "GPT-5.4 Mini"; priority = 23; }
       { slug = "gpt-5.3-codex-spark"; modelsDevId = "openai/gpt-5.3-codex-spark"; displayName = "GPT-5.3 Codex Spark"; priority = 26; }
       { slug = "gpt-5.2"; modelsDevId = "openai/gpt-5.2"; displayName = "GPT-5.2"; priority = 29; }
-      { slug = "gpt-image-1"; modelsDevId = "openai/gpt-image-1"; displayName = "GPT-Image-1"; toolMode = "direct"; priority = 40; }
-      { slug = "gpt-image-1.5"; modelsDevId = "openai/gpt-image-1.5"; displayName = "GPT-Image-1.5"; toolMode = "direct"; priority = 41; }
       { slug = "gpt-image-2"; modelsDevId = "openai/gpt-image-2"; displayName = "GPT-Image-2"; toolMode = "direct"; priority = 42; }
       { slug = "MiniMax-M2"; modelsDevId = "minimax/MiniMax-M2"; displayName = "MiniMax M2"; priority = 200; }
       { slug = "MiniMax-M2.1"; modelsDevId = "minimax/MiniMax-M2.1"; displayName = "MiniMax M2.1"; priority = 201; }
@@ -228,7 +226,7 @@ let
   # upstream edits the script preamble.
   deepseekSetupScript = pkgs.fetchurl {
     url = "https://cdn.deepseek.com/api-docs/codex-deepseek-setup-en.sh";
-    hash = "sha256-7gEZYQA374/EzwWJkQnewVMK2QBzD9KXl9p1Gv2FlT4=";
+    hash = "sha256-d1ekHOICrdg3d1GNTVxnVxvbAx4xkies68UptvtxryA=";
   };
   deepseekOfficialCatalog = pkgs.runCommand "codex-deepseek-official-models.json" {
     nativeBuildInputs = [ pkgs.gawk pkgs.jq ];

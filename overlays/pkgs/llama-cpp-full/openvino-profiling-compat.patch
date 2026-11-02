@@ -1,0 +1,20 @@
+--- a/ggml/src/ggml-openvino/utils.cpp
++++ b/ggml/src/ggml-openvino/utils.cpp
+@@ -329,7 +329,7 @@
+         return;
+     }
+ 
+-    output << "status,real_time_us,cpu_time_us,start_time_us,node_type,node_name,exec_type\n";
++    output << "status,real_time_us,cpu_time_us,node_type,node_name,exec_type\n";
+     int64_t total_real_time = 0;
+     int64_t total_cpu_time = 0;
+     size_t executed_count = 0;
+@@ -345,7 +345,7 @@
+         }
+ 
+         output << status << ',' << info.real_time.count() << ',' << info.cpu_time.count() << ','
+-               << info.start_time.count() << ',' << ov_profiling_csv_field(info.node_type) << ','
++               << ov_profiling_csv_field(info.node_type) << ','
+                << ov_profiling_csv_field(info.node_name) << ',' << ov_profiling_csv_field(info.exec_type) << '\n';
+     }
+ 

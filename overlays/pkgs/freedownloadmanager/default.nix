@@ -34,12 +34,12 @@ final.callPackage (
     in
     stdenv.mkDerivation (finalAttrs: {
       pname = "freedownloadmanager";
-      version = "6.33.2.6656";
+      version = "6.35.2.7075";
       dontWrapQtApps = true;
 
       src = fetchurl {
         url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-        hash = "sha256-rsxMB5RoVmjoSWij1e8kd8Ux0Pl2jSDzzFNx2bO59Wc=";
+        hash = "sha256-gC1+fD+twEDAn8XGSjr1MJaw+jQiexFDGi9VOltzU6k=";
       };
 
       nativeBuildInputs = [

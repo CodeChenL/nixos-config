@@ -8,8 +8,18 @@
 
 inputs: final: prev:
 let
-  radxaLinkrDebuggerCtl =
-    inputs.radxa-linkr-debugger.packages.${prev.stdenv.hostPlatform.system}.radxa-linkr-debuggerctl;
+  # 上游 nix/package.nix 的 fileset 漏了 apps/ 下的 HIL 测试 fixture，
+  # 导致 cmd-ng 的 include_str! 在 checkPhase 编译失败。复制源码后补进 fileset；
+  # 上游修复后可删除这里的 patch 步骤。
+  radxaLinkrDebuggerSrc = prev.runCommand "agent-debugboard-src-patched" { } ''
+    cp -a ${inputs.radxa-linkr-debugger} $out
+    chmod -R u+w "$out"
+    substituteInPlace "$out/nix/package.nix" \
+      --replace-fail '      ../cmd-ng' '      ../cmd-ng
+      ../apps/radxa_linkr_debugger/tests/model_host/test_linkr_debugger_http_net.c'
+  '';
+
+  radxaLinkrDebuggerCtl = prev.callPackage "${radxaLinkrDebuggerSrc}/nix/package.nix" { };
 
   konnect =
     if prev.stdenv.hostPlatform.system == "x86_64-linux"

@@ -7,7 +7,32 @@ let
     ln -s ${lib.getBin pkgs.kdePackages.kwallet}/bin/kwalletd6 $out/bin/kwalletd
   '';
 
-  vinputPackage = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  # fcitx5-vinput 2.4.2 依赖 cpp-httplib 的 set_no_proxy / detail::parse_url /
+  # set_payload_max_length（上游 FetchContent 钉 v0.62.0）；nixpkgs 自带
+  # cpp-httplib 0.30.2 过旧，这里按上游钉的版本构建 header-only 安装供其使用。
+  httplib062 = pkgs.stdenv.mkDerivation {
+    pname = "cpp-httplib";
+    version = "0.62.0";
+    src = pkgs.fetchFromGitHub {
+      owner = "yhirose";
+      repo = "cpp-httplib";
+      rev = "v0.62.0";
+      hash = "sha256-CX0Da+S2I2V5bVxuxIfcGSzfroNkIJEs9SoWs3UO674=";
+    };
+    nativeBuildInputs = [ pkgs.cmake ];
+    buildInputs = [ pkgs.openssl ];
+    cmakeFlags = [
+      "-DHTTPLIB_COMPILE=OFF"
+      "-DHTTPLIB_INSTALL=ON"
+      "-DHTTPLIB_TEST=OFF"
+      "-DHTTPLIB_USE_OPENSSL_IF_AVAILABLE=ON"
+    ];
+  };
+  vinputPackage = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default.overrideAttrs (old: {
+    cmakeFlags = (old.cmakeFlags or [ ]) ++ [
+      "-Dhttplib_DIR=${httplib062}/lib/cmake/httplib"
+    ];
+  });
 in
 
 {
